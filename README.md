@@ -44,3 +44,54 @@ Multiple save slots from the pause menu (Esc). Old v1 saves are not compatible.
 - **Bag upgrades**: the Inventory has an "Expand bag" button: +8 slots per upgrade (250g, 1000g, 2250g, ... scaling), from 40 up to 120 slots. The bag list scrolls and the size is saved.
 - **Skill tree UI**: tiered rows, ACTIVE / PASSIVE headers, level requirements under each node, key badges on equipped skills, and a bigger 4-slot loadout bar. **Drag** a learned active skill onto a slot to equip it (or right-click it), drag slot to slot to swap, right-click a slot to clear it.
 - **Rebindable keys**: Esc menu (or Title) -> **Controls**, or the "Keys..." button in the Skills window. Rebind the 4 skill slots, 4 quick-item slots, Dash and Recall; conflicting keys are swapped. Saved in `user://settings.json`; the skill bar, quick-item bar and help text follow your bindings.
+
+## Visual polish pass
+- Project-wide UI theme (`ui_theme.tres`, built by `UI.make_theme()`): buttons now have clearly visible fills, gold borders and hover/pressed/disabled states, including the pause menu.
+- Inventory: bag grid scrolls in its own panel; the bag-upgrade button and info label no longer overlap anything.
+- 114 generated skill icons (`assets/skillicons/`, from `tools/generate_skill_icons.py`) used on the skill bar, skill tree and drag previews.
+- Terrain edges blend smoothly between biomes (`_blend_edges` in world.gd).
+- Wind sway shader on trees, herbs and banners; animated town fountain; lamps glow only at night with a gentle flicker (`night_light.gd`).
+- Ambient particles per biome (pollen, leaves, embers, spores, fireflies at night), footstep dust tinted by ground, and idle breathing for NPCs and guards.
+
+## Run toggle and bars
+- Run is now an on/off toggle (default Shift, rebindable in Esc > Controls). "Running (key)" shows under the HUD while on.
+- New `fancy_bar.gd` HP/MP bars: border, gradient and gloss, numbers, damage flash and delayed damage trail. Enemy bars are bigger, colour-shift green to red, have a trail and a centred name.
+
+## Mage / Priest MP regen balance
+- Mage and Priest regen is now (1.5 + Mind*0.06 + MaxMP*1%) x class multiplier (Mage 1.0, Priest 1.25) plus gear/buffs, so it scales with their pool and skill costs. Other classes are unchanged.
+- All classes regenerate MP 1.6x faster while out of combat.
+
+## Refined art pack
+All 317 PNGs under `assets/` were replaced by the refined art set (same paths and sizes): class-coloured skill icons, character highlights/trim, stronger mob/boss contrast, richer props, tiles, items and spell effects. Note: the `tools/generate_*.py` scripts would overwrite these, so don't re-run them.
+
+## Ranger arrows and bullets
+- Arrows now fly point-first (they were drawn sideways before), 25% larger, with a fading trail and a soft glow tinted by the weapon's element.
+- Bullets are longer tracers with a yellow trail and glow, a muzzle flash and a tiny camera kick.
+- Hits throw a spark burst; arrows that hit walls or rocks stick in briefly, then fade.
+
+## Art style pass (v5)
+`tools/generate_assets_v5.py` redraws terrain tiles (grass, forest, dirt, sand, cobble stone, mushroom ground), oak/pine trees, bush, rock and stump with darker outlines, multi-tone leaf clusters and light-from-top-left shading. A soft vignette frames the screen. Other sprites (buildings, characters, mobs) still use the refined art pack.
+
+## Autosave
+The game autosaves every 60s into the current slot (skipped while dead). F5 still quick-saves manually.
+
+## New game slot picker
+After choosing a class you pick a save slot (Start on an empty slot, Overwrite on a used one). The new game is saved there immediately and autosaves keep using it.
+
+## Simpler, roomier dungeons
+Dungeons are now a 3x3 to 5x5 grid of big open rooms (9-13 tiles across) joined by 3-tile-wide corridors, with a 15x15 boss arena in the far corner. 2-4 monsters per room. Layouts are checked to always be fully connected.
+
+## Save on exit
+Closing the window or choosing Quit to Title saves to the current slot first (not when dead).
+
+## Map teleport
+Open the map (M): click a discovered dungeon marker to select it, then press Teleport to Dungeon (3s channel, stand still, costs 20+2 gold per rank, shares the 20s recall cooldown). Teleport to Town is also a button on the map (free, same as G). Selected dungeon is ringed in green.
+
+## Sound and music
+- `tools/generate_audio.py` synthesises everything (needs numpy + ffmpeg): 11 music loops in `assets/music/` and 30 effects in `assets/sfx/`. Edit the track table in `music()` to change tunes.
+- `scripts/audio.gd` (autoload `Audio`) crossfades music by place: title screen, town, wilderness by day / night, one track per dungeon biome (Magma Cavern, Verdant Labyrinth, Spore Warren, Overgrown Ruins, Sunken Grotto, Deep Cave) and a boss track inside the boss arena.
+- Effects: attacks, hits/crits, enemy and player death, hurt, spells, dash, bow/gun, pickups, coins, level up, chests, chopping/mining, portals/teleport, shop, equip and every UI button click.
+- Music and Sound volume sliders are on the pause menu (saved in settings).
+
+## Gear comparison
+Hovering gear in the bag, shops or blacksmith list now shows each stat with its difference versus what you wear (green up / red down, lost stats listed), an UPGRADE / DOWNGRADE / Sidegrade verdict weighted for your class (e.g. INT/Magic Atk for casters, STR/Phy Atk for fighters), and a second panel with the equipped item. Rings and bracelets compare against the weaker worn one.

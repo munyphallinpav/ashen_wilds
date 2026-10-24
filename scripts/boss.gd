@@ -583,6 +583,7 @@ func _set_enraged(announce = true):
 func take_damage(amount, _from_pos, _kb = 0.0, element = "", opts = {}):
 	if dead:
 		return
+	Audio.sfx("hit", 0.9)
 	var mult = Game.def_factor(defense, opts.get("lvl", 1))
 	if element != "":
 		mult *= 1.0 - float(d["res"].get(element, 0)) / 100.0
@@ -611,6 +612,7 @@ func take_damage(amount, _from_pos, _kb = 0.0, element = "", opts = {}):
 
 
 func _die():
+	Audio.sfx("boss_roar", 1.0, 0.7)
 	if dead:
 		return
 	dead = true

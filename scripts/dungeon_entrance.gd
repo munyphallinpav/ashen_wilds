@@ -64,4 +64,5 @@ func _process(delta):
 
 func interact():
 	if found and Game.cur_dungeon == null:
+		Audio.sfx("portal", 1.0)
 		Game.main.enter_dungeon(rec)

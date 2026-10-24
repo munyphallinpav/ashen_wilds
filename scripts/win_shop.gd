@@ -89,7 +89,7 @@ func _row(it, text, w, cb, enabled = true):
 		b.add_theme_color_override("font_color", Items.color_of(it))
 		b.add_theme_color_override("font_hover_color", Items.color_of(it).lightened(0.3))
 		b.add_theme_color_override("font_disabled_color", Items.color_of(it).darkened(0.4))
-	b.mouse_entered.connect(hud.tip_show.bind(Items.lines(it, hud.player.char_id)))
+	b.mouse_entered.connect(func(): hud.item_tip(it))
 	b.mouse_exited.connect(hud.tip_hide)
 	b.pressed.connect(cb)
 	return b
@@ -149,6 +149,7 @@ func _buy(id, price):
 		Game.notify("Bag is full!")
 		return
 	p.gold -= price
+	Audio.sfx("buy", 0.8)
 	p.add_item(it)
 
 

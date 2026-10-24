@@ -85,7 +85,9 @@ func _gui_input(event):
 			_drag = true
 			_moved = false
 		else:
-			if _drag and not _moved:
+			if _drag and not _moved and _pick_dungeon(event.position):
+				pass
+			elif _drag and not _moved:
 				var wp = (_vo + event.position / _s) * 16.0
 				wp.x = clampf(wp.x, 0.0, Game.W * 16.0)
 				wp.y = clampf(wp.y, 0.0, Game.H * 16.0)
@@ -95,6 +97,16 @@ func _gui_input(event):
 	elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		Game.waypoint = null
 		Game.notify("Waypoint cleared")
+
+
+func _pick_dungeon(pos):
+	for rec in Game.dungeons:
+		var dp = _mp(Vector2(rec["pos"][0], rec["pos"][1]))
+		if dp.distance_to(pos) <= 8.0:
+			Game.sel_dungeon = rec
+			Game.notify("Selected: %s (Rank %d)" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"]])
+			return true
+	return false
 
 
 func _mouse_exit():
@@ -231,6 +243,8 @@ func _draw():
 		var poly = PackedVector2Array([dp + Vector2(0, -sz), dp + Vector2(sz, 0), dp + Vector2(0, sz), dp + Vector2(-sz, 0)])
 		draw_colored_polygon(poly, dcol)
 		draw_polyline(PackedVector2Array([poly[0], poly[1], poly[2], poly[3], poly[0]]), Color.WHITE, 1.0)
+		if mode == "full" and Game.sel_dungeon == rec:
+			draw_arc(dp, sz + 3.0, 0.0, TAU, 20, Color(0.4, 1, 0.5), 1.5)
 		if mode == "full":
 			var label = "%s  Rank %d" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"]]
 			draw_string_outline(font, dp + Vector2(-30, -8), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 7, 3, Color.BLACK)

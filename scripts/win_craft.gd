@@ -180,6 +180,6 @@ func _refresh_enchant(p):
 			msg_lbl.text = "Affixes re-rolled: %s" % Items.name_of(it)
 			refresh())
 		row.add_child(b2)
-		row.mouse_entered.connect(hud.tip_show.bind(Items.lines(it, p.char_id)))
+		row.mouse_entered.connect(func(): hud.item_tip(it))
 		row.mouse_exited.connect(hud.tip_hide)
 		list_box.add_child(row)

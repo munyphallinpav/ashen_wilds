@@ -24,6 +24,8 @@ var xp_bar
 var hunger_bar
 var lvl_label
 var time_label
+var run_label
+const FancyBar = preload("res://scripts/fancy_bar.gd")
 var gold_label
 var buff_label
 var quest_label
@@ -47,6 +49,8 @@ var boss_box
 var boss_name_lbl
 var boss_bar
 
+var tp_town_btn
+var tp_dun_btn
 var map_full
 var minimap
 var mini_btn
@@ -58,16 +62,42 @@ var slots_panel
 var slots_title
 var slots_box
 var slot_mode = "load"
+var new_class_id = ""
+var new_class_name = ""
 var slot_from = "title"
 
 var tip_panel
 var tip_box
+var tip2_panel
+var tip2_box
 var fade_rect
+
+
+func _build_vignette():
+	var gt = GradientTexture2D.new()
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.0, 1.0)
+	gt.width = 256
+	gt.height = 256
+	var gr = Gradient.new()
+	gr.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	gr.colors = PackedColorArray([Color(0.02, 0.05, 0.08, 0.0), Color(0.02, 0.05, 0.08, 0.0), Color(0.02, 0.05, 0.08, 0.42)])
+	gt.gradient = gr
+	var v = TextureRect.new()
+	v.texture = gt
+	v.position = Vector2.ZERO
+	v.size = Vector2(480, 270)
+	v.stretch_mode = TextureRect.STRETCH_SCALE
+	v.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(v)
 
 
 func _ready():
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	layer = 10
+	_build_vignette()
 	_build_status()
 	_build_bars()
 	_build_misc()
@@ -85,6 +115,7 @@ func _ready():
 	add_child(slots_panel)
 	panels["load"] = slots_panel
 	panels["save"] = slots_panel
+	panels["new"] = slots_panel
 	_build_slots()
 	_build_map()
 	_build_pause()
@@ -123,9 +154,33 @@ func _build_tip():
 	tip_box.add_theme_constant_override("separation", 0)
 	tip_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tip_panel.add_child(tip_box)
+	tip2_panel = Panel.new()
+	tip2_panel.visible = false
+	tip2_panel.z_index = 100
+	tip2_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip2_panel.add_theme_stylebox_override("panel", UI.style(Color(0.05, 0.06, 0.1, 0.96), Color(0.5, 0.6, 0.8), 1))
+	add_child(tip2_panel)
+	tip2_box = VBoxContainer.new()
+	tip2_box.position = Vector2(5, 3)
+	tip2_box.add_theme_constant_override("separation", 0)
+	tip2_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tip2_panel.add_child(tip2_box)
 
 
-func tip_show(lines):
+## Gear tooltip with a comparison against the worn item (second panel shows what is equipped).
+func item_tip(it):
+	var p = player
+	if p == null or not Items.is_gear(it):
+		tip_show(Items.lines(it, p.char_id if p != null else ""))
+		return
+	var other = Items.compare_target(it, p)
+	if other != null and (is_same(other, it) or other == it):
+		tip_show(Items.lines(it, p.char_id))
+		return
+	tip_show(Items.compare_lines(it, other, p.char_id), Items.lines(other, p.char_id) if other != null else null)
+
+
+func tip_show(lines, extra = null):
 	UI.clear(tip_box)
 	var w = 90.0
 	for l in lines:
@@ -136,11 +191,25 @@ func tip_show(lines):
 	tip_panel.size = Vector2(160, 20 + lines.size() * 10)
 	tip_box.size = Vector2(150, 10)
 	tip_panel.visible = true
+	tip2_panel.visible = false
+	if extra != null:
+		UI.clear(tip2_box)
+		var hd = UI.lbl("Currently equipped", 7, Color(0.6, 0.75, 1.0))
+		tip2_box.add_child(hd)
+		for l in extra:
+			var lb2 = UI.lbl(l[0], 8, l[1])
+			lb2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			lb2.custom_minimum_size = Vector2(150, 0)
+			tip2_box.add_child(lb2)
+		tip2_panel.size = Vector2(160, 20 + extra.size() * 10)
+		tip2_panel.visible = true
 	_place_tip()
 	# resize to fit after layout
 	await get_tree().process_frame
 	if tip_panel.visible:
 		tip_panel.size = Vector2(160, tip_box.get_combined_minimum_size().y + 8)
+		if tip2_panel.visible:
+			tip2_panel.size = Vector2(160, tip2_box.get_combined_minimum_size().y + 8)
 		_place_tip()
 
 
@@ -152,11 +221,22 @@ func _place_tip():
 	if p.y + tip_panel.size.y > 268:
 		p.y = 268 - tip_panel.size.y
 	tip_panel.position = p
+	if tip2_panel.visible:
+		var q = Vector2(p.x + tip_panel.size.x + 4, p.y)
+		if q.x + tip2_panel.size.x > 478:
+			q.x = p.x - tip2_panel.size.x - 4
+		if q.x < 2:
+			q.x = 2
+			p.x = q.x + tip2_panel.size.x + 4
+			tip_panel.position = p
+		q.y = minf(q.y, 268 - tip2_panel.size.y)
+		tip2_panel.position = q
 
 
 func tip_hide():
 	if tip_panel != null:
 		tip_panel.visible = false
+		tip2_panel.visible = false
 
 
 # ------------------------------------------------------------ panel switching / pause
@@ -169,7 +249,7 @@ func set_panel(panel_name):
 		panels[panel_name].visible = true
 	if panel_name == "map" and map_full != null and Game.dlayout == null:
 		map_full.center_on_player(2.2)
-	get_tree().paused = panel_name != "" and panel_name != "title" and panel_name != "select"
+	get_tree().paused = panel_name != "" and panel_name != "title" and panel_name != "select" and panel_name != "new"
 	_apply_minimap()
 	refresh_active()
 
@@ -244,12 +324,21 @@ func _build_status():
 	tl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(tl)
 	lvl_label = UI.lbl("Lv 1", 9)
-	hp_bar = UI.bar(Color(0.85, 0.2, 0.2), 130, 9)
-	mp_bar = UI.bar(Color(0.25, 0.45, 0.95), 130, 7)
+	hp_bar = FancyBar.new()
+	hp_bar.color = Color(0.86, 0.2, 0.22)
+	hp_bar.font_size = 8
+	hp_bar.custom_minimum_size = Vector2(130, 12)
+	mp_bar = FancyBar.new()
+	mp_bar.color = Color(0.25, 0.5, 0.98)
+	mp_bar.trail_color = Color(0.6, 0.8, 1.0)
+	mp_bar.custom_minimum_size = Vector2(130, 9)
 	xp_bar = UI.bar(Color(0.9, 0.8, 0.25), 130, 3)
 	hunger_bar = UI.bar(Color(0.9, 0.55, 0.2), 130, 3)
 	for n in [lvl_label, hp_bar, mp_bar, xp_bar, hunger_bar]:
 		tl.add_child(n)
+	run_label = UI.lbl("", 8, Color(0.6, 1, 0.6))
+	run_label.position = Vector2(6, 90)
+	add_child(run_label)
 	gold_label = UI.lbl("0g", 9, Color(1, 0.85, 0.3))
 	gold_label.position = Vector2(6, 54)
 	add_child(gold_label)
@@ -379,7 +468,7 @@ func open_slots(mode, from_panel):
 
 
 func _refresh_slots():
-	slots_title.text = "SAVE GAME" if slot_mode == "save" else "LOAD GAME"
+	slots_title.text = "SAVE GAME" if slot_mode == "save" else ("CHOOSE A SAVE SLOT FOR YOUR %s" % new_class_name.to_upper() if slot_mode == "new" else "LOAD GAME")
 	UI.clear(slots_box)
 	for i in range(1, Game.SLOT_COUNT + 1):
 		var info = Game.slot_summary(i) if Game.has_method("slot_summary") else Game.slot_summary(i)
@@ -390,7 +479,7 @@ func _refresh_slots():
 		l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		l.clip_text = true
 		row.add_child(l)
-		var b = UI.btn("Save" if slot_mode == "save" else "Load", 38, 22, 8)
+		var b = UI.btn("Save" if slot_mode == "save" else ("Start" if info == "" else "Overwrite") if slot_mode == "new" else "Load", 38 if slot_mode != "new" else 56, 22, 8)
 		b.disabled = slot_mode == "load" and info == ""
 		b.pressed.connect(_slot_action.bind(i))
 		row.add_child(b)
@@ -402,7 +491,11 @@ func _refresh_slots():
 
 
 func _slot_action(i):
-	if slot_mode == "save":
+	if slot_mode == "new":
+		Game.current_slot = i
+		Game.delete_slot(i)
+		character_chosen.emit(new_class_id)
+	elif slot_mode == "save":
 		Game.main.save_game(i)
 		_refresh_slots()
 	else:
@@ -484,9 +577,23 @@ func _build_map():
 		p.add_child(bt)
 		zx += b[1] + 3.0
 	title.text = "MAP"
-	var hint = UI.lbl("Click: waypoint | Right-click: clear\nWheel: zoom | Drag: pan", 7, Color(1, 1, 1, 0.75))
+	var hint = UI.lbl("Click: waypoint / select dungeon | Right-click: clear\nWheel: zoom | Drag: pan", 7, Color(1, 1, 1, 0.75))
 	hint.position = Vector2(278, 227)
 	p.add_child(hint)
+	tp_town_btn = UI.btn("Teleport to Town", 190, 16, 8)
+	tp_town_btn.position = Vector2(278, 140)
+	tp_town_btn.pressed.connect(func():
+		set_panel("")
+		player.start_recall())
+	p.add_child(tp_town_btn)
+	tp_dun_btn = UI.btn("Teleport to Dungeon", 190, 16, 8)
+	tp_dun_btn.position = Vector2(278, 160)
+	tp_dun_btn.pressed.connect(func():
+		if Game.sel_dungeon != null and Game.dungeons.has(Game.sel_dungeon):
+			var rec = Game.sel_dungeon
+			set_panel("")
+			player.start_teleport_dungeon(rec))
+	p.add_child(tp_dun_btn)
 	ore_btn = UI.btn("Ore markers: ON", 100, 16, 8)
 	ore_btn.position = Vector2(278, 248)
 	ore_btn.pressed.connect(_toggle_ore)
@@ -536,7 +643,7 @@ func _build_controls():
 		p.add_child(kb)
 		ctrl_btns[b[0]] = kb
 		n += 1
-	var fixed = UI.lbl("Fixed keys: WASD move, Shift run, Space / Click attack, I bag, C character, K skills, B craft, M map, N minimap, T interact, H help, F5 save", 7, Color(1, 1, 1, 0.55))
+	var fixed = UI.lbl("Fixed keys: WASD move, run toggle (rebindable), Space / Click attack, I bag, C character, K skills, B craft, M map, N minimap, T interact, H help, F5 save", 7, Color(1, 1, 1, 0.55))
 	fixed.position = Vector2(20, 206)
 	fixed.custom_minimum_size = Vector2(440, 0)
 	fixed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -587,9 +694,31 @@ func _build_pause():
 	p.add_child(t)
 	_menu_column(p, ["Resume", "Save Game", "Load Game", "Controls", "Quit to Title"],
 		[func(): set_panel(""), func(): open_slots("save", "pause"), func(): open_slots("load", "pause"), func(): open_controls("pause"), _quit_to_title], 80)
+	var vy = 90.0
+	for row in [["Music", "music_vol"], ["Sound", "sfx_vol"]]:
+		var l = UI.lbl(row[0], 9, Color(1, 0.9, 0.5))
+		l.position = Vector2(332, vy)
+		p.add_child(l)
+		var sl = HSlider.new()
+		sl.min_value = 0.0
+		sl.max_value = 1.0
+		sl.step = 0.05
+		sl.value = Audio.get(row[1])
+		sl.position = Vector2(332, vy + 14)
+		sl.custom_minimum_size = Vector2(110, 14)
+		sl.size = Vector2(110, 14)
+		sl.value_changed.connect(func(v):
+			Audio.set(row[1], v)
+			Audio.save_volumes()
+			if row[1] == "sfx_vol":
+				Audio.sfx("click", 1.0))
+		p.add_child(sl)
+		vy += 44.0
 
 
 func _quit_to_title():
+	if Game.main != null and player != null and not player.dead:
+		Game.main.save_game(Game.current_slot, true)
 	Game.pending_load = null
 	get_tree().paused = false
 	get_tree().reload_current_scene()
@@ -657,7 +786,9 @@ func _build_select():
 
 
 func _pick(id):
-	character_chosen.emit(id)
+	new_class_id = id
+	new_class_name = Game.CLASSES[id]["name"]
+	open_slots("new", "select")
 
 
 # ------------------------------------------------------------ runtime
@@ -670,8 +801,8 @@ func bind_player(p):
 
 func _help_text():
 	var k = func(a): return Game.key_label(a)
-	return "WASD move | Shift run | Mouse aim, Click/Space attack | %s / Right-click dash | %s %s %s %s skills (K to equip) | %s %s %s %s quick use\nI bag | C character | K skills | B craft | M map | N minimap | T talk | %s recall | F5 save | Esc menu + key bindings | H hide" % [
-		k.call("dash"), k.call("skill_0"), k.call("skill_1"), k.call("skill_2"), k.call("skill_3"),
+	return "WASD move | %s run on/off | Mouse aim, Click/Space attack | %s / Right-click dash | %s %s %s %s skills (K to equip) | %s %s %s %s quick use\nI bag | C character | K skills | B craft | M map | N minimap | T talk | %s recall | F5 save (autosave every 60s) | Esc menu + key bindings | H hide" % [
+		k.call("run"), k.call("dash"), k.call("skill_0"), k.call("skill_1"), k.call("skill_2"), k.call("skill_3"),
 		k.call("quick_1"), k.call("quick_2"), k.call("quick_3"), k.call("quick_4"), k.call("recall")]
 
 
@@ -727,7 +858,7 @@ func _unhandled_input(event):
 			return
 		elif open_panel == "select":
 			set_panel("title")
-		elif open_panel == "save" or open_panel == "load":
+		elif open_panel == "save" or open_panel == "load" or open_panel == "new":
 			_slots_back()
 		elif open_panel == "controls":
 			set_panel(controls_from)
@@ -751,6 +882,8 @@ func _unhandled_input(event):
 			cycle_minimap()
 	elif event.is_action_pressed("map"):
 		_toggle("map")
+	elif event.is_action_pressed("run"):
+		Game.run_on = not Game.run_on
 	elif event.is_action_pressed("recall"):
 		if open_panel == "" and not player.dead:
 			player.start_recall()
@@ -771,12 +904,15 @@ func _process(_delta):
 		_place_tip()
 	hp_bar.max_value = player.max_hp
 	hp_bar.value = player.hp
+	hp_bar.text = "%d / %d" % [player.hp, player.max_hp]
+	mp_bar.text = "%d" % player.mp
+	run_label.text = "Running (%s)" % Game.key_label("run") if Game.run_on else ""
 	mp_bar.max_value = player.max_mp
 	mp_bar.value = player.mp
 	xp_bar.max_value = Game.xp_need(player.level)
 	xp_bar.value = player.xp if player.level < Game.MAX_LEVEL else Game.xp_need(player.level)
 	hunger_bar.value = player.hunger
-	lvl_label.text = "%s Lv%d  HP %d/%d  MP %d" % [player.cdata["name"], player.level, player.hp, player.max_hp, player.mp]
+	lvl_label.text = "%s  Lv%d" % [player.cdata["name"], player.level]
 	gold_label.text = "%dg" % player.gold
 	var bt = ""
 	for id in player.buffs:
@@ -815,8 +951,7 @@ func _process(_delta):
 		var sid = Skills.slot_skill_any(player, i)
 		var learned = sid != "" and Skills.rank(player, sid) > 0
 		if sid != "":
-			var el = Game.SKILLS[sid]["elem"]
-			skill_icon[i].texture = Game.tex("res://assets/items/elem_%s.png" % el)
+			skill_icon[i].texture = Game.skill_icon(sid)
 			skill_icon[i].modulate = Color.WHITE
 			if not learned:
 				skill_icon[i].modulate = Color(0.3, 0.3, 0.35)
@@ -832,8 +967,28 @@ func _process(_delta):
 		quick_icon[n].modulate = Color.WHITE if player.quick_count(n) > 0 else Color(0.35, 0.35, 0.4)
 	if open_panel == "map" and Game.map != null:
 		_update_map_info()
+		_update_tp_buttons()
 	if open_panel == "craft":
 		wins["craft"].fire_lbl.text = "Campfire nearby: YES" if Game.near_fire(player.global_position) else "Campfire nearby: no"
+
+
+func _update_tp_buttons():
+	var indun = Game.cur_dungeon != null
+	var in_town = Game.world != null and not indun and absf(player.position.x - Game.world.spawn_pos.x) < Game.world.TOWN_HX - 16.0 and absf(player.position.y - Game.world.spawn_pos.y) < Game.world.TOWN_HY - 16.0
+	tp_town_btn.disabled = in_town
+	tp_town_btn.text = "Teleport to Town" if player.recall_cd <= 0.0 else "Teleport to Town (%ds)" % ceili(player.recall_cd)
+	tp_dun_btn.visible = not indun
+	var rec = Game.sel_dungeon
+	if rec != null and not Game.dungeons.has(rec):
+		Game.sel_dungeon = null
+		rec = null
+	if rec == null:
+		tp_dun_btn.text = "Click a dungeon on the map to teleport"
+		tp_dun_btn.disabled = true
+	else:
+		var c = player.teleport_cost(rec)
+		tp_dun_btn.text = "Teleport to %s (Rank %d) - %dg" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"], c]
+		tp_dun_btn.disabled = player.gold < c
 
 
 func _update_map_info():
@@ -850,7 +1005,7 @@ func _update_map_info():
 					minis_dead += 1
 		txt += "\nMini bosses: %d/%d defeated\nMain boss: %s" % [minis_dead, minis_total, "DEFEATED" if Game.cur_dungeon["state"]["boss"] else "alive (far corner)"]
 		map_info.text = txt
-		dungeon_info.text = "Green dot = exit, yellow = chests, red = main boss.\nExplore the maze: the main boss waits in the open arena at the far end."
+		dungeon_info.text = "Green dot = exit, yellow = chests, red = main boss.\nExplore the rooms: the main boss waits in the open arena at the far end."
 		return
 	txt = "Pos %d, %d   %s\nExplored %d%% of the land" % [tp.x, tp.y, "Night" if Game.is_night else "Day", Game.map.percent()]
 	if Game.waypoint != null:

@@ -149,7 +149,12 @@ func recalc():
 	s["drop"] = g.get("drop", 0.0) + s["luck"] * 0.3 + m.get("drop_pct", 0.0) * 100.0
 	s["heal_pct"] = m.get("heal_pct", 0.0)
 	s["hp_regen"] = 0.6 + level * 0.03 + g.get("hp_regen", 0.0) + m.get("hp_regen", 0.0)
-	s["mp_regen"] = 2.0 + s["mind"] * 0.05 + g.get("mp_regen", 0.0) + m.get("mp_regen", 0.0)
+	# Casters (mage/priest) regen scales with their pool so it keeps up with skill costs; priest sustains better, mage bursts.
+	var rm = cdata.get("mp_regen_mult", 0.0)
+	if rm > 0.0:
+		s["mp_regen"] = (1.5 + s["mind"] * 0.06 + s["max_mp"] * 0.010) * rm + g.get("mp_regen", 0.0) + m.get("mp_regen", 0.0)
+	else:
+		s["mp_regen"] = 2.0 + s["mind"] * 0.05 + g.get("mp_regen", 0.0) + m.get("mp_regen", 0.0)
 	for e in Game.ELEMENTS:
 		res[e] = minf(g.get("res_" + e, 0.0) + m.get("res_all", 0.0) + m.get("res_" + e, 0.0), 75.0)
 		s["res_" + e] = res[e]
@@ -198,6 +203,7 @@ func add_status(kind, dur, pw, dmg_hint = 0.0):
 func heal(amount):
 	if dead:
 		return
+	Audio.sfx("heal", 0.6, 1.0, 0.4)
 	var a = amount
 	hp = minf(max_hp, hp + a)
 	Game.float_text("+%d" % int(a), global_position, Color(0.4, 1, 0.5))
@@ -229,6 +235,7 @@ func add_xp(n):
 		hp = max_hp
 		mp = max_mp
 		Game.notify("LEVEL UP! Lv %d  (+10 stat pts, +5 skill pts)" % level)
+		Audio.sfx("levelup", 1.0)
 		Game.float_text("LEVEL UP", global_position, Color(1, 0.9, 0.3), 10)
 		Game.spawn_fx("aura", global_position + Vector2(0, -8))
 	stats_changed.emit()
@@ -265,6 +272,7 @@ func respec():
 func add_gold(n):
 	gold += int(n)
 	if n > 0:
+		Audio.sfx("coin", 0.7)
 		Game.float_text("+%dg" % n, global_position + Vector2(0, -8), Color(1, 0.85, 0.2))
 	inventory_changed.emit()
 
@@ -276,6 +284,8 @@ const DASH_CD = 1.4
 
 ## Default ability for every class (Ctrl or right mouse button): short dash with brief invulnerability.
 func try_dash():
+	if dash_cd <= 0.0 and not dead:
+		Audio.sfx("dash", 0.8)
 	if dash_cd > 0.0 or dead:
 		return
 	dash_cd = DASH_CD
@@ -297,7 +307,32 @@ const RECALL_TIME = 3.0
 const RECALL_CD = 20.0
 
 
+var recall_dest = null     # null = town, else a dungeon record to teleport to
+
+
+func teleport_cost(rec):
+	return 20 + 2 * int(rec["level"])
+
+
+func start_teleport_dungeon(rec):
+	if dead or recall_t > 0.0:
+		return
+	if Game.cur_dungeon != null:
+		Game.notify("Leave the dungeon first")
+		return
+	if recall_cd > 0.0:
+		Game.notify("Teleport ready in %ds" % ceili(recall_cd))
+		return
+	if gold < teleport_cost(rec):
+		Game.notify("Need %dg to teleport there" % teleport_cost(rec))
+		return
+	recall_dest = rec
+	recall_t = RECALL_TIME
+	Game.notify("Teleporting to the dungeon... (stand still)")
+
+
 func start_recall():
+	recall_dest = null
 	if dead or recall_t > 0.0:
 		return
 	if recall_cd > 0.0:
@@ -323,17 +358,76 @@ func _recall_tick(delta, moving):
 	if recall_t <= 0.0:
 		sprite.modulate = Color.WHITE
 		recall_cd = RECALL_CD
+		if recall_dest != null:
+			var rec = recall_dest
+			recall_dest = null
+			if gold < teleport_cost(rec) or not Game.dungeons.has(rec):
+				Game.notify("Teleport failed")
+				return
+			gold -= teleport_cost(rec)
+			global_position = Vector2(rec["pos"][0], rec["pos"][1]) + Vector2(0, 22)
+			Game.main.cam.reset_smoothing()
+			invuln = 1.0
+			Audio.sfx("teleport", 1.0)
+			Game.notify("Teleported to the dungeon (-%dg)" % teleport_cost(rec))
+			return
 		if Game.cur_dungeon != null:
 			Game.main.leave_dungeon(false)
 		global_position = Game.world.spawn_pos
 		Game.main.cam.reset_smoothing()
 		invuln = 1.0
+		Audio.sfx("teleport", 1.0)
 		Game.notify("You return to town.")
+
+
+var dust
+var dust_t = 0.0
+
+
+func _make_dust():
+	dust = CPUParticles2D.new()
+	dust.local_coords = false
+	dust.amount = 10
+	dust.lifetime = 0.45
+	dust.emitting = false
+	dust.direction = Vector2(0, -1)
+	dust.spread = 120.0
+	dust.initial_velocity_min = 6.0
+	dust.initial_velocity_max = 16.0
+	dust.gravity = Vector2.ZERO
+	dust.scale_amount_min = 1.4
+	dust.scale_amount_max = 2.6
+	dust.z_index = -1
+	var sc = Curve.new()
+	sc.add_point(Vector2(0, 1))
+	sc.add_point(Vector2(1, 0))
+	dust.scale_amount_curve = sc
+	dust.position = Vector2(0, -1)
+	add_child(dust)
+
+
+func _update_dust(delta):
+	if dust == null:
+		_make_dust()
+	dust_t -= delta
+	if dust_t <= 0.0:
+		dust_t = 0.3
+		var t = Game.world.tile_at(global_position) if Game.dlayout == null else 5
+		var c = Color(0.62, 0.55, 0.45, 0.7)
+		match t:
+			2: c = Color(0.92, 0.82, 0.58, 0.8)
+			3, 4: c = Color(0.55, 0.78, 0.4, 0.7)
+			6: c = Color(0.65, 0.65, 0.72, 0.7)
+			7: c = Color(0.7, 0.5, 0.9, 0.7)
+			8, 9: c = Color(0.35, 0.3, 0.3, 0.8)
+		dust.color = c
+	dust.emitting = velocity.length() > 70.0 and not dead
 
 
 func _physics_process(delta):
 	if dead:
 		return
+	_update_dust(delta)
 	atk_cd = maxf(0.0, atk_cd - delta)
 	combat_t = maxf(0.0, combat_t - delta)
 	anim_lock = maxf(0.0, anim_lock - delta)
@@ -354,7 +448,7 @@ func _physics_process(delta):
 	if not blocked and not stunned:
 		dir = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	move_dir = dir
-	var running = Input.is_action_pressed("run") and dir != Vector2.ZERO
+	var running = Game.run_on and dir != Vector2.ZERO
 	var spd = 60.0 * stats["move_speed"] * (1.6 if running else 1.0)
 	if anim_lock > 0.0:
 		spd *= 0.6
@@ -417,7 +511,7 @@ func _tick_effects(delta):
 	# regen
 	var in_combat = combat_t > 0.0
 	hp = minf(max_hp, hp + stats["hp_regen"] * (0.35 if in_combat else 1.0) * delta)
-	mp = minf(max_mp, mp + stats["mp_regen"] * delta)
+	mp = minf(max_mp, mp + stats["mp_regen"] * (1.0 if in_combat else 1.6) * delta)
 	for h in hots:
 		h[0] -= delta
 		hp = minf(max_hp, hp + h[1] * delta)
@@ -683,6 +777,7 @@ func discard(i, n):
 
 
 func equip_from(i):
+	Audio.sfx("equip", 0.8)
 	var it = inv[i]
 	if it == null or not Items.is_gear(it):
 		return false
@@ -868,6 +963,7 @@ func basic_attack():
 
 
 func _melee(w, base, elem):
+	Audio.sfx("swing", 0.8, 1.0, 0.08)
 	var d = aim
 	start_anim("attack", 0.28)
 	swinging = true
@@ -925,8 +1021,28 @@ func _ranged(w, base, elem):
 	if dead:
 		return
 	var bullet = w["style"] == "bullet"
+	_muzzle(d, bullet)
 	Game.shoot({"position": origin() + d * 10.0, "dir": d, "speed": 380.0 if bullet else 320.0, "base": base * (1.0 if not bullet else 1.1),
 		"magic": false, "element": elem, "life": 1.1, "kb": 70.0, "arrow": not bullet, "kind": "bullet" if bullet else "arrow"})
+
+
+func _muzzle(d, bullet):
+	Audio.sfx("gun" if bullet else "bow", 0.8)
+	var g = Sprite2D.new()
+	g.texture = Game.light_tex()
+	g.global_position = origin() + d * (13.0 if bullet else 8.0)
+	g.scale = Vector2(0.5, 0.5) if bullet else Vector2(0.28, 0.28)
+	g.modulate = Color(1, 0.9, 0.5, 0.9) if bullet else Color(1, 1, 1, 0.5)
+	var m = CanvasItemMaterial.new()
+	m.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	g.material = m
+	g.z_index = 7
+	Game.entities.add_child(g)
+	var tw = g.create_tween()
+	tw.tween_property(g, "modulate:a", 0.0, 0.1)
+	tw.tween_callback(g.queue_free)
+	if bullet:
+		Game.main.shake(1.0)
 
 
 func _magic(w, base, elem):
@@ -961,6 +1077,7 @@ func take_damage(amount, from_pos, kb = 100.0, element = "", opts = {}):
 		recall_t = 0.0
 		sprite.modulate = Color.WHITE
 		Game.notify("Recall interrupted")
+	Audio.sfx("hurt", 0.9, 1.0, 0.1)
 	var magic = opts.get("magic", false)
 	var lvl = opts.get("lvl", level)
 	var df = stats["mag_def"] if magic else stats["phy_def"]
@@ -986,6 +1103,7 @@ func take_damage(amount, from_pos, kb = 100.0, element = "", opts = {}):
 func _die():
 	if dead:
 		return
+	Audio.sfx("death", 1.0)
 	dead = true
 	hp = 0.0
 	sprite.rotation = deg_to_rad(90)

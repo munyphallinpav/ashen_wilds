@@ -14,6 +14,7 @@ Game="*res://scripts/game.gd"
 Items="*res://scripts/items.gd"
 Skills="*res://scripts/skills.gd"
 UI="*res://scripts/ui.gd"
+Audio="*res://scripts/audio.gd"
 
 [display]
 
@@ -28,3 +29,7 @@ window/stretch/mode="canvas_items"
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=0
+
+[gui]
+
+theme/custom="res://ui_theme.tres"

@@ -18,6 +18,10 @@ func _ready():
 	sprite.scale = Vector2(1.1, 1.1)
 	add_child(sprite)
 	_face()
+	var bt = create_tween().set_loops()
+	bt.tween_interval(randf() * 1.5)
+	bt.tween_property(sprite, "scale:y", 1.15, 0.9).set_trans(Tween.TRANS_SINE)
+	bt.tween_property(sprite, "scale:y", 1.1, 0.9).set_trans(Tween.TRANS_SINE)
 	var nm = Label.new()
 	nm.text = "Town Guard"
 	nm.add_theme_font_size_override("font_size", 6)

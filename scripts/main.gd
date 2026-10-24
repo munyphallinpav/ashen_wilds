@@ -60,8 +60,8 @@ func _ready():
 
 
 func _new_game(char_id):
-	Game.current_slot = 1
 	_begin(randi(), char_id, null)
+	save_game(Game.current_slot, true)
 
 
 func _begin(seed_val, char_id, data):
@@ -88,6 +88,7 @@ func _begin(seed_val, char_id, data):
 	_overworld_limits()
 	p.add_child(cam)
 	cam.make_current()
+	_build_ambient()
 	hud.bind_player(p)
 
 	if data != null:
@@ -176,12 +177,12 @@ func make_save():
 	return d
 
 
-func save_game(slot):
+func save_game(slot, auto = false):
 	if not started:
 		return
 	if Game.write_slot(slot, make_save()):
 		Game.current_slot = slot
-		Game.notify("Saved to slot %d" % slot)
+		Game.notify(("Autosaved (slot %d)" if auto else "Saved to slot %d") % slot)
 	else:
 		Game.notify("Save failed!")
 
@@ -197,11 +198,97 @@ func load_game(slot):
 	get_tree().reload_current_scene()
 
 
+# ------------------------------------------------------------ ambient particles (pollen / fireflies / embers / spores)
+var ambient
+var ambient_t = 0.0
+
+
+func _build_ambient():
+	ambient = CPUParticles2D.new()
+	ambient.local_coords = false
+	ambient.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	ambient.emission_rect_extents = Vector2(250, 150)
+	ambient.lifetime = 7.0
+	ambient.preprocess = 7.0
+	ambient.direction = Vector2(1, -0.3)
+	ambient.spread = 180.0
+	ambient.z_index = 20
+	var gr = Gradient.new()
+	gr.add_point(0.15, Color(1, 1, 1, 1))
+	gr.add_point(0.85, Color(1, 1, 1, 1))
+	gr.set_color(0, Color(1, 1, 1, 0))
+	gr.set_color(gr.get_point_count() - 1, Color(1, 1, 1, 0))
+	ambient.color_ramp = gr
+	cam.add_child(ambient)
+	_update_ambient()
+
+
+func _update_ambient():
+	if ambient == null or Game.player == null:
+		return
+	var biome = world.biome_at(Game.player.global_position) if Game.cur_dungeon == null else "dungeon"
+	var amount = 26
+	var col = Color(1, 1, 0.82, 0.7)
+	var vmin = 3.0
+	var vmax = 8.0
+	var grav = Vector2.ZERO
+	var smin = 1.0
+	var smax = 2.0
+	if Game.cur_dungeon != null:
+		col = Color(0.8, 0.8, 0.9, 0.4)
+		amount = 18
+	elif Game.is_night:
+		col = Color(0.85, 1.0, 0.35, 0.95)   # fireflies
+		amount = 34
+		smin = 1.6
+		smax = 2.8
+	elif biome == "volcanic":
+		col = Color(1.0, 0.5, 0.15, 0.9)
+		amount = 44
+		vmin = 6.0
+		vmax = 14.0
+		grav = Vector2(0, -10)
+	elif biome == "mushroom":
+		col = Color(0.85, 0.55, 1.0, 0.8)
+		amount = 36
+		grav = Vector2(0, -4)
+	elif biome == "mountain":
+		col = Color(0.9, 0.9, 0.95, 0.45)
+		amount = 16
+	elif biome == "forest":
+		col = Color(0.7, 0.95, 0.45, 0.75)   # drifting leaves
+		amount = 24
+		grav = Vector2(2, 4)
+	ambient.amount = amount
+	ambient.color = col
+	ambient.initial_velocity_min = vmin
+	ambient.initial_velocity_max = vmax
+	ambient.gravity = grav
+	ambient.scale_amount_min = smin
+	ambient.scale_amount_max = smax
+	ambient.emitting = true
+
+
 # ------------------------------------------------------------ world simulation
+func _notification(what):
+	# closing the window saves first
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and started and Game.player != null and not Game.player.dead:
+		save_game(Game.current_slot, true)
+
+
+const AUTOSAVE_SECS = 60.0
+var autosave_t = 0.0
+
+
 func _process(delta):
 	if not started:
 		return
 	var p = Game.player
+	autosave_t += delta
+	if autosave_t >= AUTOSAVE_SECS:
+		autosave_t = 0.0
+		if not p.dead:
+			save_game(Game.current_slot, true)
 	if Game.cur_dungeon == null:
 		Game.map.reveal(p.global_position)
 		tod += delta / DAY_LEN
@@ -209,6 +296,10 @@ func _process(delta):
 		tint.color = Color(0.32, 0.38, 0.65).lerp(Color(1, 1, 1), smoothstep(0.2, 0.7, k))
 		Game.is_night = k < 0.3
 		hud.time_label.text = "Night - beware!" if Game.is_night else "Day"
+		ambient_t += delta
+		if ambient_t > 1.5:
+			ambient_t = 0.0
+			_update_ambient()
 		spawn_t += delta
 		if spawn_t > 5.0:
 			spawn_t = 0.0

@@ -29,6 +29,10 @@ func _ready():
 	spr = Sprite2D.new()
 	add_child(spr)
 	_set_tex(d["tex"])
+	if kind in ["oak", "pine", "palm", "shroom", "dead"]:
+		spr.material = Game.wind_material(1.7, 34.0)
+	elif kind in ["herb", "mushpatch"]:
+		spr.material = Game.wind_material(0.9, 12.0)
 	set_process(false)
 
 
@@ -72,6 +76,7 @@ func take_hit(power, by):
 	if not alive:
 		return
 	hp -= power
+	Audio.sfx("mine" if kind in ["iron", "coal"] else "chop", 0.7, 1.0, 0.1)
 	Game.chips(global_position + Vector2(0, -10), d["chip"], 6)
 	var tw = create_tween()
 	tw.tween_property(spr, "position:x", 1.5, 0.04)

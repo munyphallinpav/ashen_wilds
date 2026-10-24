@@ -16,6 +16,10 @@ func _ready():
 	sprite.position = Vector2(0, -12)
 	add_child(sprite)
 	sprite.play("idle_down")
+	var bt = create_tween().set_loops()
+	bt.tween_interval(randf() * 1.5)
+	bt.tween_property(sprite, "scale:y", 1.035, 0.9).set_trans(Tween.TRANS_SINE)
+	bt.tween_property(sprite, "scale:y", 1.0, 0.9).set_trans(Tween.TRANS_SINE)
 	var nm = Label.new()
 	nm.text = data["name"]
 	nm.add_theme_font_size_override("font_size", 7)

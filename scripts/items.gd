@@ -179,6 +179,106 @@ func totals(it):
 	return t
 
 
+## Relative worth of one point of each stat for a class kind ("phy" or "mag"), used for the upgrade verdict.
+func stat_weight(k, kind):
+	var w = {"hp": 0.15, "mp": 0.1, "phy_def": 0.8, "mag_def": 0.8, "crit_rate": 3.0, "crit_dmg": 0.6, "atk_speed": 2.0, "move_speed": 1.2,
+		"hp_regen": 6.0, "mp_regen": 6.0, "vit": 1.0, "luck": 0.5, "drop": 0.3}
+	if w.has(k):
+		return w[k]
+	if k.begins_with("res_"):
+		return 0.4
+	if kind == "phy":
+		return {"phy_atk": 1.4, "str": 1.2, "dex": 1.0, "mag_atk": 0.05, "int": 0.05, "mind": 0.3}.get(k, 0.3)
+	return {"mag_atk": 1.4, "int": 1.5, "mind": 1.1, "phy_atk": 0.05, "str": 0.05, "dex": 0.3}.get(k, 0.3)
+
+
+func worth(it, cls):
+	var kind = Game.CLASSES[cls]["kind"] if cls != "" and Game.CLASSES.has(cls) else "phy"
+	var s = 0.0
+	var t = totals(it)
+	for k in t:
+		s += t[k] * stat_weight(k, kind)
+	return s
+
+
+## The item currently worn that `it` would replace (for rings/bracelets: the weaker of the two when both are full, or null if a slot is free).
+func compare_target(it, p):
+	if not is_gear(it) or p == null:
+		return null
+	var base = slot_of(it)
+	if base == "ring" or base == "bracelet":
+		var a = p.equip[base + "1"]
+		var b = p.equip[base + "2"]
+		if a == null or b == null:
+			return null
+		return a if worth(a, p.char_id) <= worth(b, p.char_id) else b
+	return p.equip[base]
+
+
+## Tooltip lines for `it` with per-stat differences versus `other` (the worn item). Also returns the verdict.
+func compare_lines(it, other, cls):
+	var out = []
+	out.append([name_of(it), color_of(it)])
+	var sub_name = ""
+	if Game.WEAPONS.has(it["sub"]):
+		sub_name = Game.WEAPONS[it["sub"]]["name"]
+	elif Game.ARMORS.has(it["sub"]):
+		sub_name = Game.ARMORS[it["sub"]]["name"]
+	else:
+		sub_name = Game.ACCS[it["sub"]]["name"]
+	out.append(["%s %s  (iLv %d)" % [Game.RARITY_NAMES[it["rar"]], sub_name, it["ilvl"]], color_of(it)])
+	if it["elem"] != "":
+		out.append(["Element: " + it["elem"].capitalize(), Game.ELEM_COLOR[it["elem"]]])
+	if cls != "" and not can_equip(it, cls):
+		out.append(["Your class cannot equip this", Color(1, 0.4, 0.4)])
+	var nt = totals(it)
+	var ot = totals(other)
+	var keys = []
+	for k in nt:
+		keys.append(k)
+	for k in ot:
+		if not keys.has(k):
+			keys.append(k)
+	var up = Color(0.45, 1.0, 0.5)
+	var down = Color(1.0, 0.45, 0.4)
+	var same = Color(0.85, 0.85, 0.85)
+	for k in keys:
+		var nv = nt.get(k, 0.0)
+		var ov = ot.get(k, 0.0)
+		var d = nv - ov
+		var is_pct = PCT_STATS.has(k)
+		var lab = STAT_LABEL.get(k, k)
+		var txt = ""
+		if nv > 0.0:
+			txt = stat_text(k, nv)
+		else:
+			txt = "Lose %s" % lab
+		var col = same
+		if other != null and absf(d) >= 0.05:
+			var ds = ("%+.1f" % d) if (is_pct or k.ends_with("regen")) else ("%+d" % int(round(d)))
+			txt += "  (%s)" % ds
+			col = up if d > 0 else down
+		elif other == null:
+			col = Color(1, 1, 1) if it["base"].has(k) else Color(0.55, 0.85, 1.0)
+		out.append([txt, col])
+	if it["u"] != "":
+		out.append(["Unique", Color(1.0, 0.8, 0.3)])
+	if other == null:
+		out.append(["Empty slot - nothing to compare", Color(0.7, 0.8, 1.0)])
+	else:
+		var ns = worth(it, cls)
+		var os = worth(other, cls)
+		var pct = (ns - os) / maxf(os, 1.0) * 100.0
+		if pct > 4.0:
+			out.append(["UPGRADE  (+%d%%)" % int(round(pct)), up])
+		elif pct < -4.0:
+			out.append(["DOWNGRADE  (%d%%)" % int(round(pct)), down])
+		else:
+			out.append(["Sidegrade  (about equal)", Color(1, 0.9, 0.5)])
+	out.append(["Sell value: %dg" % value(it), Color(1, 0.85, 0.3)])
+	return out
+
+
 func slot_of(it):
 	return Game.slot_of(it["sub"])
 

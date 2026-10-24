@@ -102,22 +102,42 @@ building("food", C("#d8782a"), C("#d8b080"), C("#e8c040"), "bread")
 building("artifact", C("#c8a020"), C("#8a7a9a"), C("#6a2a8a"), "gem")
 
 
-# ---------------------------------------------------------------- fountain 48x40
-im = Image.new("RGBA", (48, 40), (0, 0, 0, 0))
-d = ImageDraw.Draw(im)
-d.ellipse([2, 22, 46, 39], fill=(0, 0, 0, 60))
-d.ellipse([3, 18, 45, 36], fill=K)
-d.ellipse([4, 19, 44, 34], fill=C("#a8a8b8"))
-d.ellipse([7, 21, 41, 32], fill=C("#4aa0e0"))
-d.ellipse([11, 23, 37, 30], fill=C("#7ac8f5"))
-d.rectangle([21, 8, 27, 26], fill=K)
-d.rectangle([22, 9, 26, 25], fill=C("#b8b8c8"))
-d.ellipse([16, 4, 32, 12], fill=K)
-d.ellipse([17, 5, 31, 11], fill=C("#a8a8b8"))
-d.rectangle([23, 0, 25, 6], fill=C("#bfe6ff"))
-for x in (19, 29):
-    d.line([24, 4, x, 11], fill=C("#bfe6ff"))
-im.save("assets/world/fountain.png")
+# ---------------------------------------------------------------- fountain 48x40 (static + 4 animated frames)
+def fountain(frame=0):
+    im = Image.new("RGBA", (48, 40), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.ellipse([2, 22, 46, 39], fill=(0, 0, 0, 60))
+    d.ellipse([3, 18, 45, 36], fill=K)
+    d.ellipse([4, 19, 44, 34], fill=C("#a8a8b8"))
+    d.ellipse([7, 21, 41, 32], fill=C("#4aa0e0"))
+    d.ellipse([11, 23, 37, 30], fill=C("#7ac8f5"))
+    # ripples travelling outwards
+    for k in range(2):
+        r = ((frame + k * 2) % 4) / 4.0
+        rx, ry = 4 + r * 16, 2 + r * 6
+        d.ellipse([24 - rx, 27 - ry, 24 + rx, 27 + ry], outline=(210, 240, 255, int(220 * (1 - r))))
+    d.rectangle([21, 8, 27, 26], fill=K)
+    d.rectangle([22, 9, 26, 25], fill=C("#b8b8c8"))
+    d.ellipse([16, 4, 32, 12], fill=K)
+    d.ellipse([17, 5, 31, 11], fill=C("#a8a8b8"))
+    # spray: jet + falling droplets that differ per frame
+    top = 0 + (frame % 2)
+    d.rectangle([23, top, 25, 6], fill=C("#bfe6ff"))
+    for k, x in enumerate((15, 19, 29, 33)):
+        t = ((frame + k) % 4) / 3.0
+        px = 24 + (x - 24) * (0.4 + 0.6 * t)
+        py = 6 + 22 * t * t + (1 - t) * (-3)
+        d.rectangle([px, py, px + 1, py + 1], fill=C("#d8f2ff"))
+    d.line([24, 5, 18, 11], fill=C("#bfe6ff"))
+    d.line([24, 5, 30, 11], fill=C("#bfe6ff"))
+    return im
+
+
+fountain(0).save("assets/world/fountain.png")
+strip = Image.new("RGBA", (48 * 4, 40), (0, 0, 0, 0))
+for f in range(4):
+    strip.paste(fountain(f), (48 * f, 0))
+strip.save("assets/world/fountain_anim.png")
 
 # lamp post 12x30
 im = Image.new("RGBA", (12, 30), (0, 0, 0, 0)); d = ImageDraw.Draw(im)

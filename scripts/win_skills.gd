@@ -106,7 +106,7 @@ func _slot_drag(_pos, i, b):
 	var id = p.loadout[i]
 	if id == "":
 		return null
-	var pv = UI.icon(Game.tex("res://assets/items/elem_%s.png" % Game.SKILLS[id]["elem"]), 28)
+	var pv = UI.icon(Game.skill_icon(id), 28)
 	b.set_drag_preview(pv)
 	return {"skill": id, "from": i}
 
@@ -134,7 +134,7 @@ func _node_drag(_pos, id, b):
 	if s["type"] != "active" or Skills.rank(p, id) <= 0:
 		return null
 	hud.tip_hide()
-	b.set_drag_preview(UI.icon(Game.tex("res://assets/items/elem_%s.png" % s["elem"]), 28))
+	b.set_drag_preview(UI.icon(Game.skill_icon(id), 28))
 	return {"skill": id}
 
 
@@ -241,7 +241,7 @@ func refresh():
 		var lid = p.loadout[i]
 		slot_keys[i].text = "[%s]" % Game.key_label("skill_%d" % i)
 		slot_names[i].text = Game.SKILLS[lid]["name"] if lid != "" else "- empty -"
-		slot_icons[i].texture = Game.tex("res://assets/items/elem_%s.png" % (Game.SKILLS[lid]["elem"] if lid != "" else "none"))
+		slot_icons[i].texture = Game.skill_icon(lid) if lid != "" else Game.tex("res://assets/items/elem_none.png")
 		slot_icons[i].modulate = Color.WHITE if lid != "" else Color(0.4, 0.4, 0.45)
 		var sel = i == sel_slot
 		var col = Game.ELEM_COLOR.get(Game.SKILLS[lid]["elem"], Color(0.6, 0.6, 0.7)) if lid != "" else Color(0.35, 0.35, 0.42)
@@ -273,8 +273,7 @@ func refresh():
 		b.add_theme_stylebox_override("normal", UI.style(bg, border, bw))
 		b.add_theme_stylebox_override("hover", UI.style(Color(0.18, 0.18, 0.26), border, bw))
 		b.add_theme_stylebox_override("pressed", UI.style(Color(0.25, 0.25, 0.3), border, bw))
-		var el = s["elem"] if s["elem"] != "none" else "none"
-		var ic = UI.icon(Game.tex("res://assets/items/elem_%s.png" % el), NODE)
+		var ic = UI.icon(Game.skill_icon(id), NODE)
 		ic.modulate = Color.WHITE if (r > 0 or learnable) else Color(0.5, 0.5, 0.55)
 		if locked:
 			ic.modulate = Color(0.25, 0.25, 0.3)

@@ -1,6 +1,21 @@
 extends Node
 ## Autoload "UI": small widget factories shared by the HUD and the windows.
 
+## Default look for every Button (clearly visible bordered buttons with hover / pressed / disabled states).
+func make_theme():
+	var th = Theme.new()
+	th.set_stylebox("normal", "Button", style(Color(0.17, 0.2, 0.3), Color(0.72, 0.62, 0.38), 1))
+	th.set_stylebox("hover", "Button", style(Color(0.27, 0.31, 0.44), Color(1, 0.88, 0.45), 1))
+	th.set_stylebox("pressed", "Button", style(Color(0.1, 0.12, 0.2), Color(1, 0.95, 0.6), 1))
+	th.set_stylebox("disabled", "Button", style(Color(0.1, 0.1, 0.13), Color(0.3, 0.3, 0.35), 1))
+	th.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	th.set_color("font_color", "Button", Color(0.96, 0.93, 0.82))
+	th.set_color("font_hover_color", "Button", Color(1, 0.97, 0.7))
+	th.set_color("font_pressed_color", "Button", Color(1, 0.9, 0.5))
+	th.set_color("font_disabled_color", "Button", Color(0.45, 0.45, 0.5))
+	return th
+
+
 func lbl(text, size = 9, color = Color.WHITE):
 	var l = Label.new()
 	l.text = text
@@ -62,6 +77,7 @@ func btn(text, w = 0, h = 20, size = 9):
 	b.focus_mode = Control.FOCUS_NONE
 	b.custom_minimum_size = Vector2(w, h)
 	b.add_theme_font_size_override("font_size", size)
+	b.pressed.connect(func(): Audio.sfx("click", 0.7))
 	return b
 
 

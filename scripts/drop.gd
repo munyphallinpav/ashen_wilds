@@ -45,6 +45,7 @@ func _process(delta):
 		if age > delay and dist < 8.0:
 			if p.can_hold(item):
 				p.add_item(item)
+				Audio.sfx("pickup", 0.7, 1.0, 0.08)
 				queue_free()
 			else:
 				Game.notify("Bag is full!")

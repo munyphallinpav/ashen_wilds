@@ -126,6 +126,7 @@ func cast(p, id):
 		Game.notify("Not enough mana")
 		return false
 	p.mp -= cost
+	Audio.sfx("cast", 0.8, 1.0, 0.1)
 	p.cd[id] = s["cd"] * (1.0 - minf(p.stats.get("cdr", 0.0), 0.4))
 	p.cd_max[id] = p.cd[id]
 	if has_method("_do_" + id):

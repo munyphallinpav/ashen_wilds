@@ -308,6 +308,7 @@ func _bake_ground(gw, gh):
 	var dec = Game.tex("res://assets/tiles/decor.png").get_image()
 	dec.convert(Image.FORMAT_RGBA8)
 	var img = Image.create(gw * 16, gh * 16, false, Image.FORMAT_RGBA8)
+	var masks = _edge_masks()
 	for y in range(gh):
 		for x in range(gw):
 			var t = tiles[y * gw + x]
@@ -334,6 +335,8 @@ func _bake_ground(gw, gh):
 				idx = 7
 			if idx >= 0:
 				img.blit_rect(ts, Rect2i(idx * 16, 0, 16, 16), Vector2i(x * 16, y * 16))
+			if t >= 2 and t <= 8:
+				_blend_edges(img, ts, masks, x, y, t, gw, gh)
 			if (t == 3 or t == 4) and rng.randf() < 0.1:
 				var di = rng.randi_range(0, 5)
 				if di == 4 and t != 4:
@@ -345,6 +348,53 @@ func _bake_ground(gw, gh):
 	ground.centered = false
 	ground.z_index = -10
 	add_child(ground)
+
+
+const TILE_IDX = {2: 4, 3: 0, 4: 2, 5: 3, 6: 5, 7: 8, 8: 10}
+const TILE_PRIO = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7}
+
+
+## 4 dithered 4px edge masks (N, E, S, W). Used to let a higher-priority terrain bleed into its lower neighbour.
+func _edge_masks():
+	var out = []
+	for side in range(4):
+		var m = Image.create(192, 16, false, Image.FORMAT_RGBA8)   # same size as the tileset (mask is sampled in source coordinates)
+		for a in range(16):
+			for d in range(4):
+				var on = d == 0 or (d == 1 and (a + d) % 2 == 0) or (d == 2 and a % 3 == 0 and (a + d) % 2 == 0) or (d == 3 and a % 5 == 0)
+				if not on:
+					continue
+				var px = a
+				var py = d
+				match side:
+					1:
+						px = 15 - d
+						py = a
+					2:
+						py = 15 - d
+					3:
+						px = d
+						py = a
+				for k in range(12):
+					m.set_pixel(px + k * 16, py, Color(1, 1, 1, 1))
+		out.append(m)
+	return out
+
+
+func _blend_edges(img, ts, masks, x, y, t, gw, gh):
+	var pr = TILE_PRIO[t]
+	var sides = [Vector2i(0, -1), Vector2i(1, 0), Vector2i(0, 1), Vector2i(-1, 0)]
+	for s in range(4):
+		var nx = x + sides[s].x
+		var ny = y + sides[s].y
+		if nx < 0 or ny < 0 or nx >= gw or ny >= gh:
+			continue
+		var nt = tiles[ny * gw + nx]
+		if nt < 2 or nt > 8 or nt == t:
+			continue
+		if TILE_PRIO[nt] <= pr:
+			continue
+		img.blit_rect_mask(ts, masks[s], Rect2i(TILE_IDX[nt] * 16, 0, 16, 16), Vector2i(x * 16, y * 16))
 
 
 func _paint_town(img, gw, gh):
@@ -384,6 +434,12 @@ func _build_village(entities, cx, cy):
 	var c = Vector2(cx * 16 + 8, cy * 16 + 8)
 	_build_walls(entities, c)
 	add_prop(entities, "res://assets/world/fountain.png", c + Vector2(0, 6), Vector2(36, 12))
+	var fa = AnimatedSprite2D.new()
+	fa.sprite_frames = Game.strip_frames("res://assets/world/fountain_anim.png", 48, 40, 4, 5.0, true)
+	fa.offset = Vector2(0, -(20.0 - 3.0))
+	fa.position = c + Vector2(0, 6)
+	entities.add_child(fa)
+	fa.play("default")
 	# shop buildings: NPC stands in front of each door (Game.NPCS pos is relative to the centre)
 	for id in Game.NPCS:
 		var nd = Game.NPCS[id]
@@ -460,6 +516,8 @@ func _wall(entities, pos, tower):
 
 func add_prop(entities, path, pos, coll):
 	var b = StaticBody2D.new()
+	var sway = path.ends_with("banner.png")
+	var is_lamp = path.ends_with("lamp.png")
 	b.position = pos
 	b.collision_layer = 1
 	b.collision_mask = 0
@@ -468,6 +526,14 @@ func add_prop(entities, path, pos, coll):
 	s.texture = t
 	s.offset = Vector2(0, -(t.get_height() / 2.0 - 3.0))
 	b.add_child(s)
+	if sway:
+		s.material = Game.wind_material(1.4, 28.0)
+	elif path.ends_with("flowerbed.png"):
+		s.material = Game.wind_material(0.5, 10.0)
+	if is_lamp:
+		var lt = Game.make_light(Color(1.0, 0.82, 0.5), 0.85, 1.1)
+		lt.position = Vector2(0, -24)
+		b.add_child(lt)
 	if coll != Vector2.ZERO:
 		var cs = CollisionShape2D.new()
 		var r = RectangleShape2D.new()

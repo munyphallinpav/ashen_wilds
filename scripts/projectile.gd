@@ -28,11 +28,22 @@ var healed = false
 func _ready():
 	z_index = 6
 	rotation = dir.angle()
+	var rng_kind = arrow or kind == "bullet"
+	if rng_kind and not hostile:
+		_make_trail()
 	if arrow:
 		var s = Sprite2D.new()
 		s.texture = Game.tex("res://assets/items/arrow.png")
-		s.rotation = PI / 2.0
+		s.scale = Vector2(1.25, 1.25)
 		add_child(s)
+		_make_glow(0.5 if element != "" else 0.3)
+	elif kind == "bullet" and not hostile:
+		var a = AnimatedSprite2D.new()
+		a.sprite_frames = Game.proj_frames(kind)
+		a.scale = Vector2(1.3, 1.0)
+		add_child(a)
+		a.play("default")
+		_make_glow(0.45)
 	else:
 		var a = AnimatedSprite2D.new()
 		a.sprite_frames = Game.proj_frames(kind)
@@ -41,7 +52,53 @@ func _ready():
 		a.play("default")
 
 
+var trail = null
+var trail_pts = []
+var sprite_glow = null
+
+
+func _tint_color():
+	if element != "" and Game.ELEM_COLOR.has(element):
+		return Game.ELEM_COLOR[element]
+	return Color(1, 0.95, 0.6) if kind == "bullet" else Color(0.95, 0.95, 0.85)
+
+
+func _make_trail():
+	trail = Line2D.new()
+	trail.top_level = true
+	trail.width = 3.0 if kind == "bullet" else 2.0
+	trail.z_index = 5
+	var gr = Gradient.new()
+	var c = _tint_color()
+	gr.set_color(0, Color(c.r, c.g, c.b, 0.0))
+	gr.set_color(1, Color(c.r, c.g, c.b, 0.85))
+	trail.gradient = gr
+	var cv = Curve.new()
+	cv.add_point(Vector2(0, 0.0))
+	cv.add_point(Vector2(1, 1.0))
+	trail.width_curve = cv
+	add_child(trail)
+
+
+func _make_glow(a):
+	var g = Sprite2D.new()
+	g.texture = Game.light_tex()
+	g.scale = Vector2(0.2, 0.2)
+	g.modulate = Color(_tint_color(), a)
+	var m = CanvasItemMaterial.new()
+	m.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	g.material = m
+	add_child(g)
+
+
 func _physics_process(delta):
+	if trail != null:
+		trail_pts.append(global_position)
+		if trail_pts.size() > 9:
+			trail_pts.pop_front()
+		trail.clear_points()
+		for tp in trail_pts:
+			trail.add_point(tp)
 	position += dir * speed * delta
 	life -= delta
 	if life <= 0.0:
@@ -75,8 +132,50 @@ func _physics_process(delta):
 				return
 
 
+func _stick_ghost():
+	var gs = Sprite2D.new()
+	gs.texture = Game.tex("res://assets/items/arrow.png")
+	gs.global_position = global_position + dir * 3.0
+	gs.rotation = dir.angle()
+	gs.z_index = 5
+	Game.entities.add_child(gs)
+	var tw = gs.create_tween()
+	tw.tween_interval(0.5)
+	tw.tween_property(gs, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(gs.queue_free)
+
+
+func _spark():
+	var c = _tint_color()
+	var pt = CPUParticles2D.new()
+	pt.position = global_position
+	pt.emitting = true
+	pt.one_shot = true
+	pt.explosiveness = 1.0
+	pt.amount = 7
+	pt.lifetime = 0.25
+	pt.direction = -dir
+	pt.spread = 60.0
+	pt.initial_velocity_min = 40.0
+	pt.initial_velocity_max = 90.0
+	pt.damping_min = 80.0
+	pt.damping_max = 120.0
+	pt.scale_amount_min = 1.0
+	pt.scale_amount_max = 1.8
+	pt.color = c
+	pt.z_index = 7
+	Game.entities.add_child(pt)
+	var tw = pt.create_tween()
+	tw.tween_interval(0.5)
+	tw.tween_callback(pt.queue_free)
+
+
 func _impact(e):
 	var pl = Game.player
+	if not hostile and (arrow or kind == "bullet") and aoe <= 0.0:
+		_spark()
+		if arrow and e == null:
+			_stick_ghost()
 	if hostile:
 		queue_free()
 		return

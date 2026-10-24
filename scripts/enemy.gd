@@ -23,6 +23,7 @@ var statuses = []         # [kind, time_left, power]
 var dot_acc = 0.0
 var knock = Vector2.ZERO
 var bar_t = 0.0
+var trail_hp = 1.0
 var t = 0.0
 var state = "move"       # move / wind / dash / stunned_by_slam
 var state_t = 0.0
@@ -311,6 +312,7 @@ func take_damage(amount, from_pos, kb = 80.0, element = "", opts = {}):
 	var crit = opts.get("crit", false)
 	var col = Color(1, 0.9, 0.4) if not crit else Color(1.0, 0.55, 0.15)
 	Game.float_text(str(int(round(dm))) + ("!" if crit else ""), global_position, col, 9 if crit else 8)
+	Audio.sfx("crit" if crit else "hit", 0.8)
 	if kb > 0.0 and not mini:
 		knock = (global_position - from_pos).normalized() * kb
 	elif kb > 0.0:
@@ -333,6 +335,7 @@ func _die():
 	if is_in_group("dead"):
 		return
 	add_to_group("dead")
+	Audio.sfx("enemy_die", 0.8)
 	var p = Game.player
 	var luck = 0.0
 	var pl_level = 1
@@ -366,13 +369,22 @@ func _die():
 func _draw():
 	var show = hp < max_hp and bar_t > 0.0
 	if mini or show:
-		var w = 18.0 if not mini else 24.0
-		var top = -d["fw"] * (0.8 if not mini else 1.0) - 2.0
-		if show or mini:
-			draw_rect(Rect2(-w / 2.0, top, w, 3), Color(0, 0, 0, 0.7))
-			draw_rect(Rect2(-w / 2.0 + 0.5, top + 0.5, (w - 1.0) * clampf(hp / max_hp, 0.0, 1.0), 2), Color(0.9, 0.2, 0.2) if not mini else Color(1.0, 0.7, 0.2))
+		var w = 22.0 if not mini else 30.0
+		var bh = 4.0 if not mini else 5.0
+		var top = -d["fw"] * (0.8 if not mini else 1.0) - 3.0
+		var frac = clampf(hp / max_hp, 0.0, 1.0)
+		trail_hp = maxf(frac, trail_hp - 0.012) if trail_hp > frac else frac
+		var col = Color(0.35, 0.85, 0.3).lerp(Color(0.92, 0.2, 0.18), 1.0 - frac) if not mini else Color(1.0, 0.65, 0.15)
+		draw_rect(Rect2(-w / 2.0 - 1, top - 1, w + 2, bh + 2), Color(0.02, 0.02, 0.05, 0.9))
+		draw_rect(Rect2(-w / 2.0, top, w * trail_hp, bh), Color(1, 0.9, 0.6, 0.9))
+		draw_rect(Rect2(-w / 2.0, top, w * frac, bh), col.darkened(0.35))
+		draw_rect(Rect2(-w / 2.0, top, w * frac, ceilf(bh * 0.55)), col)
+		draw_rect(Rect2(-w / 2.0, top, w * frac, 1), col.lightened(0.5))
 		var font = ThemeDB.fallback_font
 		var label = "Lv%d %s%s" % [level, "* " if mini else "", d["name"]]
-		draw_string(font, Vector2(-w / 2.0 - 4, top - 2), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 0.85, 0.4) if mini else Color(1, 1, 1, 0.9))
+		var sz = font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 6)
+		var lp = Vector2(-sz.x / 2.0, top - 3)
+		draw_string(font, lp + Vector2(0.6, 0.6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(0, 0, 0, 0.9))
+		draw_string(font, lp, label, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 0.85, 0.4) if mini else Color(1, 1, 1, 0.95))
 	if _has("stun"):
 		draw_string(ThemeDB.fallback_font, Vector2(-4, -d["fw"] - 2), "*", HORIZONTAL_ALIGNMENT_LEFT, -1, 8, Color(1, 1, 0.4))

@@ -47,6 +47,7 @@ func interact():
 	if opened:
 		return
 	opened = true
+	Audio.sfx("chest", 1.0)
 	spr.region_rect = Rect2(16, 0, 16, 16)
 	var p = Game.player
 	var loot = []

@@ -47,11 +47,11 @@ const CLASSES = {
 	"mage": {"name": "Mage", "kind": "mag", "sheet": "res://assets/characters/mage.png",
 		"desc": "Wand / Grimoire. Elemental destruction.\nHigh base INT.",
 		"base": {"str": 2, "vit": 5, "int": 16, "mind": 8, "dex": 6, "luck": 5},
-		"weapons": ["wand", "grimoire"], "armors": ["robe", "light"], "start": ["wand", "robe"]},
+		"weapons": ["wand", "grimoire"], "armors": ["robe", "light"], "start": ["wand", "robe"], "mp_regen_mult": 1.0},
 	"priest": {"name": "Priest", "kind": "mag", "sheet": "res://assets/characters/priest.png",
 		"desc": "Wand / Grimoire. Buffs, debuffs, holy light.\nHigh base MIND.",
 		"base": {"str": 2, "vit": 7, "int": 8, "mind": 16, "dex": 5, "luck": 5},
-		"weapons": ["wand", "grimoire"], "armors": ["robe", "light"], "start": ["grimoire", "robe"]},
+		"weapons": ["wand", "grimoire"], "armors": ["robe", "light"], "start": ["grimoire", "robe"], "mp_regen_mult": 1.25},
 }
 
 # ------------------------------------------------------------------ skills
@@ -436,6 +436,7 @@ var hud = null
 var main = null
 var map = null
 var waypoint = null
+var sel_dungeon = null    # dungeon record selected on the map
 var is_night = false
 var pending_load = null
 var current_slot = 1
@@ -544,10 +545,58 @@ signal binds_changed
 # Rebindable shortcuts (skill slots, quick items, dash, recall). Saved in user://settings.json.
 const BIND_ACTIONS = [["skill_0", "Skill slot 1"], ["skill_1", "Skill slot 2"], ["skill_2", "Skill slot 3"], ["skill_3", "Skill slot 4"],
 	["quick_1", "Quick item 1"], ["quick_2", "Quick item 2"], ["quick_3", "Quick item 3"], ["quick_4", "Quick item 4"],
-	["dash", "Dash"], ["recall", "Recall to town"]]
+	["run", "Run on/off"], ["dash", "Dash"], ["recall", "Recall to town"]]
 const DEFAULT_KEYS = {"skill_0": KEY_Q, "skill_1": KEY_E, "skill_2": KEY_R, "skill_3": KEY_F, "quick_1": KEY_1, "quick_2": KEY_2,
-	"quick_3": KEY_3, "quick_4": KEY_4, "dash": KEY_CTRL, "recall": KEY_G}
+	"quick_3": KEY_3, "quick_4": KEY_4, "run": KEY_SHIFT, "dash": KEY_CTRL, "recall": KEY_G}
+var run_on = false
 const SETTINGS_PATH = "user://settings.json"
+
+
+var _wind_mat = {}
+var _light_tex = null
+
+
+## Shared wind-sway material (strength / height per kind of sprite).
+func wind_material(strength = 1.6, height = 32.0):
+	var key = "%s_%s" % [strength, height]
+	if not _wind_mat.has(key):
+		var m = ShaderMaterial.new()
+		m.shader = load("res://scripts/wind.gdshader")
+		m.set_shader_parameter("strength", strength)
+		m.set_shader_parameter("height", height)
+		_wind_mat[key] = m
+	return _wind_mat[key]
+
+
+func light_tex():
+	if _light_tex == null:
+		var gt = GradientTexture2D.new()
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.5)
+		gt.fill_to = Vector2(1.0, 0.5)
+		gt.width = 128
+		gt.height = 128
+		var gr = Gradient.new()
+		gr.set_color(0, Color(1, 1, 1, 1))
+		gr.set_color(1, Color(0, 0, 0, 0))
+		gt.gradient = gr
+		_light_tex = gt
+	return _light_tex
+
+
+## Warm flickering lamp light: almost off by day, full at night (CanvasModulate darkens the world).
+func make_light(color, energy, scale_f = 1.0):
+	var l = load("res://scripts/night_light.gd").new()
+	l.texture = light_tex()
+	l.color = color
+	l.base = energy
+	l.texture_scale = scale_f
+	return l
+
+
+func skill_icon(id):
+	var path = "res://assets/skillicons/%s.png" % id
+	return tex(path) if ResourceLoader.exists(path) else tex("res://assets/items/elem_none.png")
 
 
 func key_of(action):

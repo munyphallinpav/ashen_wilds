@@ -42,7 +42,7 @@ func setup(h):
 	mb.pressed.connect(func(): hud.player.merge_stacks())
 	add_child(mb)
 	info_lbl = UI.lbl("", 8, Color(1, 0.85, 0.3))
-	info_lbl.position = Vector2(100, 234)
+	info_lbl.position = Vector2(150, 5)
 	add_child(info_lbl)
 	var gs = ScrollContainer.new()
 	gs.position = Vector2(8, 42)
@@ -55,7 +55,7 @@ func setup(h):
 	grid.add_theme_constant_override("v_separation", 2)
 	gs.add_child(grid)
 	expand_btn = UI.btn("Expand bag", 62, 16, 7)
-	expand_btn.position = Vector2(196, 232)
+	expand_btn.position = Vector2(104, 232)
 	expand_btn.pressed.connect(func():
 		hud.player.upgrade_bag()
 		refresh())
@@ -162,7 +162,7 @@ func _item_button(it, i, is_eq, slot_name):
 			var cl = UI.lbl(str(it["n"]), 7, Color(1, 1, 0.7))
 			cl.position = Vector2(12, 16)
 			b.add_child(cl)
-		b.mouse_entered.connect(hud.tip_show.bind(Items.lines(it, hud.player.char_id)))
+		b.mouse_entered.connect(func(): hud.item_tip(it) if not is_eq else hud.tip_show(Items.lines(it, hud.player.char_id)))
 		b.mouse_exited.connect(hud.tip_hide)
 	elif is_eq:
 		var nm = UI.lbl(slot_name.substr(0, 3).to_upper() + (slot_name.substr(slot_name.length() - 1) if slot_name.ends_with("1") or slot_name.ends_with("2") else ""), 6, Color(1, 1, 1, 0.35))
@@ -227,7 +227,7 @@ func refresh():
 	expand_btn.self_modulate = Color(0.6, 1, 0.6) if uc >= 0 and p.gold >= uc else Color.WHITE
 	expand_btn.custom_minimum_size.x = 76
 	expand_btn.size.x = 76
-	expand_btn.position.x = 184
+	expand_btn.position.x = 104
 	_refresh_details()
 
 
