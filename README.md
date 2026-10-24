@@ -95,3 +95,12 @@ Open the map (M): click a discovered dungeon marker to select it, then press Tel
 
 ## Gear comparison
 Hovering gear in the bag, shops or blacksmith list now shows each stat with its difference versus what you wear (green up / red down, lost stats listed), an UPGRADE / DOWNGRADE / Sidegrade verdict weighted for your class (e.g. INT/Magic Atk for casters, STR/Phy Atk for fighters), and a second panel with the equipped item. Rings and bracelets compare against the weaker worn one.
+
+Tooltips taller than the screen are now capped to the screen height and scroll with the mouse wheel while hovering (a 'Mouse wheel: scroll' hint appears).
+
+## Attack combos
+Holding / repeating left click chains a weapon combo (resets after a short pause; pips above the character show progress). The last hit is a flashy finisher with bigger damage, knockback, screen shake and an effect:
+- Sword (3): alternating slashes, then a wide spin slash x2.0. Dagger (4): quick stabs, then a lunging guaranteed-crit double slash x2.1.
+- Spear (3): thrusts, then a long lunge x2.0. Hammer (3): swings, then an earth slam with a shockwave x2.2.
+- Bow (3): arrows, then a piercing power arrow x2.2. Gun (3): shots, then a 3-bullet shotgun blast.
+- Wand (4) / Grimoire (3): bolts/orbs, then a big exploding orb x2.3 (double mana). Each step before the finisher also hits a little harder (+10% per step). The finisher has a longer recovery.

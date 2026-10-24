@@ -424,10 +424,43 @@ func _update_dust(delta):
 	dust.emitting = velocity.length() > 70.0 and not dead
 
 
+const COMBO_LEN = {"sword": 3, "dagger": 4, "spear": 3, "hammer": 3, "bow": 3, "gun": 3, "wand": 4, "grimoire": 3, "": 3}
+var combo_idx = 0
+var combo_t = 0.0
+var combo_lbl = null
+
+
+func combo_len():
+	return COMBO_LEN.get(weapon_sub(), 3)
+
+
+func _update_combo(delta):
+	combo_t = maxf(0.0, combo_t - delta)
+	if combo_t <= 0.0 and combo_idx != 0:
+		combo_idx = 0
+	if combo_lbl == null:
+		combo_lbl = Label.new()
+		combo_lbl.add_theme_font_size_override("font_size", 7)
+		combo_lbl.position = Vector2(-18, -44)
+		combo_lbl.size = Vector2(36, 8)
+		combo_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		combo_lbl.z_index = 20
+		add_child(combo_lbl)
+	combo_lbl.visible = combo_t > 0.0 and combo_idx > 0
+	if combo_lbl.visible:
+		var n = combo_len()
+		var t = ""
+		for i in range(n):
+			t += ("* " if i < combo_idx else "- ")
+		combo_lbl.text = t.strip_edges()
+		combo_lbl.modulate = Color(1, 0.85, 0.3) if combo_idx >= n - 1 else Color(1, 1, 1, 0.85)
+
+
 func _physics_process(delta):
 	if dead:
 		return
 	_update_dust(delta)
+	_update_combo(delta)
 	atk_cd = maxf(0.0, atk_cd - delta)
 	combat_t = maxf(0.0, combat_t - delta)
 	anim_lock = maxf(0.0, anim_lock - delta)
@@ -954,38 +987,76 @@ func basic_attack():
 	var elem = ""
 	if equip["weapon"] != null:
 		elem = equip["weapon"]["elem"]
+	var n = combo_len()
+	var step = combo_idx
+	var fin = step >= n - 1
+	if fin:
+		atk_cd *= 1.5          # recovery after the finisher
 	if style == "swing" or style == "thrust":
-		_melee(w, base, elem)
+		_melee(w, base, elem, step, fin)
 	elif style == "arrow" or style == "bullet":
-		_ranged(w, base, elem)
+		_ranged(w, base, elem, step, fin)
 	else:
-		_magic(w, base, elem)
+		_magic(w, base, elem, step, fin)
+	if mp_failed:
+		mp_failed = false
+		return
+	combo_idx = 0 if fin else step + 1
+	combo_t = 0.9 + w["cd"]
+	if fin:
+		combo_t = 0.0
+		Game.float_text("FINISHER!", global_position + Vector2(0, -26), Color(1, 0.8, 0.25), 8)
+
+var mp_failed = false
 
 
-func _melee(w, base, elem):
-	Audio.sfx("swing", 0.8, 1.0, 0.08)
+func _melee(w, base, elem, step = 0, fin = false):
+	Audio.sfx("swing", 0.8, 0.7 if fin else 1.0 + 0.05 * step, 0.08)
 	var d = aim
 	start_anim("attack", 0.28)
 	swinging = true
 	var ang = d.angle() + PI / 2.0
 	var tw = create_tween()
+	var sub = weapon_sub()
+	var mult = 1.0 + 0.1 * step
+	var reach_b = 0.0
+	var arc_b = 0.0
+	var kbv = 110.0
+	if fin:
+		mult = {"sword": 2.0, "dagger": 2.1, "spear": 2.0, "hammer": 2.2}.get(sub, 2.0)
+		reach_b = {"sword": 10.0, "dagger": 8.0, "spear": 18.0, "hammer": 8.0}.get(sub, 8.0)
+		arc_b = {"sword": 0.9, "dagger": 0.5, "spear": 0.0, "hammer": 0.6}.get(sub, 0.5)
+		kbv = 230.0
+		shake(2.5)
+		move_and_collide(d * 9.0)
+		sprite.modulate = Color(1.6, 1.6, 1.8)
+		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.2)
 	if w["style"] == "thrust":
 		pivot.rotation = ang
-		tw.tween_property(pivot, "position", Vector2(0, -9) + d * 14.0, 0.09)
+		var lunge = 14.0 + (10.0 if fin else 0.0)
+		tw.tween_property(pivot, "position", Vector2(0, -9) + d * lunge, 0.09)
 		tw.tween_property(pivot, "position", Vector2(0, -9), 0.14)
 	else:
-		pivot.rotation = ang - 1.2
-		tw.tween_property(pivot, "rotation", ang + 1.2, 0.2).set_ease(Tween.EASE_OUT)
+		var dirn = 1.0 if step % 2 == 0 else -1.0
+		var sweep = 1.2 if not fin else 2.4
+		pivot.rotation = ang - sweep * dirn
+		tw.tween_property(pivot, "rotation", ang + sweep * dirn, 0.2 if not fin else 0.26).set_ease(Tween.EASE_OUT)
 	tw.tween_callback(func(): swinging = false)
 	await get_tree().create_timer(0.09 / stats["atk_speed"]).timeout
 	if dead:
 		return
 	var origin_p = origin()
-	var reach = w["reach"]
-	var arc = w["arc"]
+	var reach = w["reach"] + reach_b
+	var arc = w["arc"] + arc_b
 	var magic = w["kind"] == "mag"
+	if fin:
+		var fxk = "spin" if (sub == "sword" or sub == "dagger") else "slash"
+		if sub == "hammer":
+			fxk = "bash"
+		Game.spawn_fx(fxk, origin_p + d * (reach * 0.6), {"scl": 1.1})
+		Audio.sfx("crit", 0.9)
 	for e in Game.enemies_in_arc(origin_p, d, reach, arc, false):
-		Game.hit(e, Game.roll_damage(self, base), origin_p, 110.0, elem, magic)
+		Game.hit(e, Game.roll_damage(self, base * mult, fin and sub == "dagger"), origin_p, kbv, elem, magic)
 	# gathering by attacking
 	var gp = 1.0 + stats["str"] * 0.07 + (equip["weapon"]["base"].get("phy_atk", 0.0) * 0.04 if equip["weapon"] != null else 0.0)
 	var best = null
@@ -1004,11 +1075,14 @@ func _melee(w, base, elem):
 	if best != null:
 		best.take_hit(gp, self)
 	if w.get("smash", false):
-		Game.spawn_fx("earth", global_position + d * 28.0, {"scl": 0.7})
+		Game.spawn_fx("earth", global_position + d * 28.0, {"scl": 0.7 if not fin else 1.4})
 		shake(1.5)
+		if fin:
+			for e2 in Game.enemies_in_circle(global_position + d * 26.0, 40.0, false):
+				Game.hit(e2, Game.roll_damage(self, base * 1.2), global_position, 200.0, elem, magic)
 
 
-func _ranged(w, base, elem):
+func _ranged(w, base, elem, step = 0, fin = false):
 	var d = aim
 	start_anim("attack", 0.28)
 	swinging = true
@@ -1022,7 +1096,22 @@ func _ranged(w, base, elem):
 		return
 	var bullet = w["style"] == "bullet"
 	_muzzle(d, bullet)
-	Game.shoot({"position": origin() + d * 10.0, "dir": d, "speed": 380.0 if bullet else 320.0, "base": base * (1.0 if not bullet else 1.1),
+	var mult = 1.0 + 0.1 * step
+	if fin:
+		shake(2.0 if not bullet else 3.0)
+		Audio.sfx("crit", 0.8)
+		if bullet:
+			# shotgun blast
+			for k in range(-1, 2):
+				var dd = d.rotated(k * 0.2)
+				Game.shoot({"position": origin() + dd * 10.0, "dir": dd, "speed": 360.0, "base": base * 1.45, "magic": false, "element": elem,
+					"life": 0.6, "kb": 160.0, "arrow": false, "kind": "bullet"})
+		else:
+			# piercing power arrow
+			Game.shoot({"position": origin() + d * 10.0, "dir": d, "speed": 460.0, "base": base * 2.2, "magic": false, "element": elem,
+				"life": 1.3, "kb": 180.0, "arrow": true, "kind": "arrow", "pierce": true})
+		return
+	Game.shoot({"position": origin() + d * 10.0, "dir": d, "speed": 380.0 if bullet else 320.0, "base": base * (1.0 if not bullet else 1.1) * mult,
 		"magic": false, "element": elem, "life": 1.1, "kb": 70.0, "arrow": not bullet, "kind": "bullet" if bullet else "arrow"})
 
 
@@ -1045,12 +1134,14 @@ func _muzzle(d, bullet):
 		Game.main.shake(1.0)
 
 
-func _magic(w, base, elem):
-	if mp < w["mana"]:
+func _magic(w, base, elem, step = 0, fin = false):
+	var cost = w["mana"] * (2.0 if fin else 1.0)
+	if mp < cost:
 		Game.notify("Not enough mana")
 		atk_cd = 0.3
+		mp_failed = true
 		return
-	mp -= w["mana"]
+	mp -= cost
 	var d = aim
 	start_anim("cast", 0.28)
 	swinging = true
@@ -1065,7 +1156,14 @@ func _magic(w, base, elem):
 	var pk = w["proj"]
 	if elem != "" and ["fire", "water", "wind", "light", "dark"].has(elem):
 		pk = elem
-	Game.shoot({"position": origin() + d * 14.0, "dir": d, "speed": 240.0, "kind": pk, "base": base, "magic": true, "element": elem,
+	if fin:
+		shake(2.5)
+		Audio.sfx("crit", 0.8)
+		Game.spawn_fx("aura", origin() + d * 10.0, {"scl": 0.6})
+		Game.shoot({"position": origin() + d * 14.0, "dir": d, "speed": 280.0, "kind": pk, "base": base * 2.3, "magic": true, "element": elem,
+			"life": 1.3, "kb": 200.0, "hit_fx": "wind" if pk == "arcane" else pk, "aoe": 38.0})
+		return
+	Game.shoot({"position": origin() + d * 14.0, "dir": d, "speed": 240.0, "kind": pk, "base": base * (1.0 + 0.1 * step), "magic": true, "element": elem,
 		"life": 1.3, "kb": 60.0, "hit_fx": "wind" if pk == "arcane" else pk})
 
 

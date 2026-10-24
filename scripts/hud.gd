@@ -70,6 +70,10 @@ var tip_panel
 var tip_box
 var tip2_panel
 var tip2_box
+var tip_scroll = 0.0
+var tip_max = [0.0, 0.0]
+var tip_hint
+const TIP_MAX_H = 262.0
 var fade_rect
 
 
@@ -165,6 +169,13 @@ func _build_tip():
 	tip2_box.add_theme_constant_override("separation", 0)
 	tip2_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tip2_panel.add_child(tip2_box)
+	tip_panel.clip_contents = true
+	tip2_panel.clip_contents = true
+	tip_hint = UI.lbl("Mouse wheel: scroll", 6, Color(1, 1, 0.6))
+	tip_hint.z_index = 101
+	tip_hint.visible = false
+	tip_hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tip_hint)
 
 
 ## Gear tooltip with a comparison against the worn item (second panel shows what is equipped).
@@ -192,6 +203,9 @@ func tip_show(lines, extra = null):
 	tip_box.size = Vector2(150, 10)
 	tip_panel.visible = true
 	tip2_panel.visible = false
+	tip_scroll = 0.0
+	tip_box.position.y = 3.0
+	tip2_box.position.y = 3.0
 	if extra != null:
 		UI.clear(tip2_box)
 		var hd = UI.lbl("Currently equipped", 7, Color(0.6, 0.75, 1.0))
@@ -204,13 +218,30 @@ func tip_show(lines, extra = null):
 		tip2_panel.size = Vector2(160, 20 + extra.size() * 10)
 		tip2_panel.visible = true
 	_place_tip()
-	# resize to fit after layout
-	await get_tree().process_frame
+	# resize to fit after layout (next frame)
+	get_tree().process_frame.connect(_fit_tip, CONNECT_ONE_SHOT)
+
+
+func _fit_tip():
 	if tip_panel.visible:
-		tip_panel.size = Vector2(160, tip_box.get_combined_minimum_size().y + 8)
+		var h1 = tip_box.get_combined_minimum_size().y + 8
+		tip_panel.size = Vector2(160, minf(h1, TIP_MAX_H))
+		tip_max = [maxf(0.0, h1 - TIP_MAX_H), 0.0]
 		if tip2_panel.visible:
-			tip2_panel.size = Vector2(160, tip2_box.get_combined_minimum_size().y + 8)
+			var h2 = tip2_box.get_combined_minimum_size().y + 8
+			tip2_panel.size = Vector2(160, minf(h2, TIP_MAX_H))
+			tip_max[1] = maxf(0.0, h2 - TIP_MAX_H)
 		_place_tip()
+		_apply_tip_scroll()
+
+
+func _apply_tip_scroll():
+	tip_box.position.y = 3.0 - minf(tip_scroll, tip_max[0])
+	tip2_box.position.y = 3.0 - minf(tip_scroll, tip_max[1])
+	var scrollable = tip_max[0] > 0.0 or tip_max[1] > 0.0
+	tip_hint.visible = scrollable and tip_panel.visible
+	if tip_hint.visible:
+		tip_hint.position = Vector2(tip_panel.position.x + 4, tip_panel.position.y + tip_panel.size.y - 9)
 
 
 func _place_tip():
@@ -220,6 +251,7 @@ func _place_tip():
 		p.x = m.x - tip_panel.size.x - 8
 	if p.y + tip_panel.size.y > 268:
 		p.y = 268 - tip_panel.size.y
+	p.y = maxf(2.0, p.y)
 	tip_panel.position = p
 	if tip2_panel.visible:
 		var q = Vector2(p.x + tip_panel.size.x + 4, p.y)
@@ -231,6 +263,7 @@ func _place_tip():
 			tip_panel.position = p
 		q.y = minf(q.y, 268 - tip2_panel.size.y)
 		tip2_panel.position = q
+	_apply_tip_scroll()
 
 
 func tip_hide():
@@ -677,6 +710,12 @@ func _refresh_controls():
 
 
 func _input(event):
+	if tip_panel != null and tip_panel.visible and (tip_max[0] > 0.0 or tip_max[1] > 0.0) and event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN or event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			tip_scroll = clampf(tip_scroll + (22.0 if event.button_index == MOUSE_BUTTON_WHEEL_DOWN else -22.0), 0.0, maxf(tip_max[0], tip_max[1]))
+			_apply_tip_scroll()
+			get_viewport().set_input_as_handled()
+			return
 	if listening != "" and event is InputEventKey and event.pressed and not event.echo:
 		get_viewport().set_input_as_handled()
 		if event.keycode != KEY_ESCAPE:
