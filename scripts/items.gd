@@ -132,6 +132,8 @@ func roll_random_gear(ilvl, rar = -1, luck = 0.0, diff = 0.0):
 
 
 func name_of(it):
+	if not is_gear(it) and it.has("bp"):
+		return "Seal: " + str(it["bp"]["name"])
 	if is_gear(it):
 		var e = int(it.get("ench", 0))
 		return ("+%d " % e if e > 0 else "") + it["name"]
@@ -275,6 +277,16 @@ func compare_lines(it, other, cls):
 			out.append(["DOWNGRADE  (%d%%)" % int(round(pct)), down])
 		else:
 			out.append(["Sidegrade  (about equal)", Color(1, 0.9, 0.5)])
+	if it.has("bp"):
+		var b = it["bp"]
+		out[0] = [name_of(it), Color(0.8, 0.6, 1.0)]
+		out.append(["%s, Rank %d, %s rooms" % [Game.DUNGEONS[b["biome"]]["name"], b["rank"], Game.SIZE_NAMES[b["size"]]], Color(0.7, 0.9, 1.0)])
+		if b.get("manual", false):
+			out.append(["Hand-built: %d rooms, %d traps, %d chests" % [b["map"]["rooms"].size(), Game.BpMap.count(b, "traps"), Game.BpMap.count(b, "chests")], Color(0.7, 0.9, 1.0)])
+		else:
+			out.append(["%dx%d grid, %d monsters/room, %d spawners" % [b["grid"], b["grid"], b["mobs"], b["spawners"]], Color(0.7, 0.9, 1.0)])
+		out.append(["Boss: %s" % Game.BOSSES[b["boss"]]["name"], Color(1, 0.8, 0.5)])
+		out.append(["Use on open ground outside town", Color(0.6, 1, 0.6)])
 	out.append(["Sell value: %dg" % value(it), Color(1, 0.85, 0.3)])
 	return out
 
@@ -296,7 +308,7 @@ func can_equip(it, cls):
 
 
 func can_stack(a, b):
-	return not is_gear(a) and not is_gear(b) and a["id"] == b["id"]
+	return not is_gear(a) and not is_gear(b) and a["id"] == b["id"] and not a.has("bp") and not b.has("bp")
 
 
 func stat_text(k, v):
@@ -338,7 +350,7 @@ func lines(it, cls = ""):
 		var d = data(it)
 		out.append([d["name"], Color(0.95, 0.95, 0.95)])
 		var cat = d.get("cat", "mat")
-		var label = {"cons": "Potion", "food": "Food", "mat": "Material", "place": "Placeable", "book": "Spell Book"}.get(cat, cat)
+		var label = {"cons": "Potion", "food": "Food", "mat": "Material", "place": "Placeable", "book": "Spell Book", "seal": "Dungeon Seal"}.get(cat, cat)
 		out.append([label, Color(0.7, 0.7, 0.75)])
 		if d.has("use"):
 			out.append(["Restores %d%% %s" % [int(d["pct"] * 100), d["use"].to_upper()], Color(0.6, 1, 0.6)])
@@ -388,6 +400,18 @@ func roll_drops(mob_id, level, mini, luck_pct, diff = 0.0):
 
 
 func scatter(items, pos):
+	if Game.is_test():
+		return
+	if Game.cur_dungeon != null and Game.cur_dungeon.has("listing") and Game.heroes_mgr != null:
+		var l = Game.heroes_mgr.get_listing(int(Game.cur_dungeon["listing"]["id"]))
+		if l != null and l["owner"] != "player":
+			var keep = []
+			for it in items:
+				if (not is_gear(it) or it["u"] == "") and randf() < l["cut"]:
+					Game.heroes_mgr.player_item_cut(l, it)
+				else:
+					keep.append(it)
+			items = keep
 	var i = 0
 	for it in items:
 		var a = TAU * float(i) / maxf(items.size(), 1.0) + randf() * 0.5

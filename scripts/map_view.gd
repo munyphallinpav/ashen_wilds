@@ -114,6 +114,19 @@ func _mouse_exit():
 	_drag = false
 
 
+func _dcol(code, col_floor, col_wall):
+	match code:
+		1:
+			return col_floor
+		2:
+			return Color(0.4, 0.3, 0.22)
+		3:
+			return Color(0.2, 0.4, 0.8)
+		4:
+			return Color(0.95, 0.4, 0.1)
+	return col_wall
+
+
 func _draw_dungeon(p):
 	var lay = Game.dlayout
 	var font = ThemeDB.fallback_font
@@ -134,7 +147,7 @@ func _draw_dungeon(p):
 		for x in range(x0, x1):
 			if lay.seen[y * lay.tw + x] == 0:
 				continue
-			draw_rect(Rect2((Vector2(x, y) - off) * _s, Vector2(_s + 0.5, _s + 0.5)), col_floor if lay.tiles[y * lay.tw + x] == 1 else col_wall)
+			draw_rect(Rect2((Vector2(x, y) - off) * _s, Vector2(_s + 0.5, _s + 0.5)), _dcol(lay.tiles[y * lay.tw + x], col_floor, col_wall))
 	# markers
 	var ex = (((lay.exit_pos - lay.OFF) / 16.0) - off) * _s
 	draw_circle(ex, 3.0, Color(0.3, 1, 0.4))
@@ -271,6 +284,8 @@ func _draw():
 			var dp2 = _mp(Vector2(rec["pos"][0], rec["pos"][1]))
 			if dp2.distance_to(hover) < 8.0:
 				txt = "%s  Rank %d  (%d:%02d left)" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"], int(rec["time_left"]) / 60, int(rec["time_left"]) % 60]
+				if rec.has("bp"):
+					txt = "%s  Rank %d  (custom)" % [rec["bp"]["name"], rec["level"]]
 		var tw = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 7).x + 8.0
 		draw_rect(Rect2(Vector2(size.x - tw - 2, 2), Vector2(tw, 11)), Color(0, 0, 0, 0.7))
 		draw_string(font, Vector2(size.x - tw + 2, 10), txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color(1, 1, 0.8))

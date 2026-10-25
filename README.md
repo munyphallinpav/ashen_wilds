@@ -104,3 +104,73 @@ Holding / repeating left click chains a weapon combo (resets after a short pause
 - Spear (3): thrusts, then a long lunge x2.0. Hammer (3): swings, then an earth slam with a shockwave x2.2.
 - Bow (3): arrows, then a piercing power arrow x2.2. Gun (3): shots, then a 3-bullet shotgun blast.
 - Wand (4) / Grimoire (3): bolts/orbs, then a big exploding orb x2.3 (double mana). Each step before the finisher also hits a little harder (+10% per step). The finisher has a longer recovery.
+
+## Bigger dungeons, traps and spawners
+- Rooms are now 15-21 tiles across (boss arena 23x23) on a 26-tile grid, joined by 3-wide corridors; 4-7 monsters per room.
+- Monster spawning devices (`spawner.gd`), one per biome: Magma Vent, Root Nest, Spore Pod, Ruined Totem, Coral Hive, Bone Altar. They summon up to 3 monsters at a time while you are near; destroy one (it has HP) for gold and XP. Destroyed devices stay destroyed.
+- Traps (`dtrap.gd`, `trap.gd`, mimic in `chest.gd`): Spike, Arrow (wall turrets), Bouncing Boulder, Poison Gas vents, Teleportation rune (random other room), Mimic (a chest that bites), Pit fall (damage + stun + drop into another room), Falling Boom (telegraphed bombs).
+- Each biome has its own trap mix: Magma Cavern (boulder/boom/spike/arrow), Verdant Labyrinth (arrow/gas/pit/mimic/spike), Spore Warren (gas/teleport/mimic/spike), Overgrown Ruins (boulder/pit/arrow/boom), Sunken Grotto (gas/pit/teleport/arrow), Deep Cave (boom/spike/mimic/pit/boulder).
+- `tools/generate_dungeon_assets.py` draws the spawner and mimic sprites.
+
+## Dungeon Designer (custom dungeons)
+
+Open it from the **Esc / pause menu -> Dungeon Designer**. Everything is free and saved automatically (`user://dungeon_bp.json`).
+
+You can adjust:
+- **Name**, **biome** and **room size** (Small / Medium / Large rooms and boss arena), plus **rooms per side** (2-6).
+- **Difficulty rank** (1-100; rank sets monster level and difficulty tier).
+- **Monsters per room** (0-10), **which monster types** spawn (none selected = biome default) and **spawner devices** (0-12).
+- **Traps**: Off / Rare / Normal / Many for Bouncing Boulder, Poison Gas, Teleport Rune, Pitfall, Falling Boom, Spikes, Arrow Trap and Mimic Chest.
+- **Boss** (any of the 6) and **mini bosses** (0-8, with a chosen mini boss type or random).
+
+Buttons:
+- **Test Run** - enter the dungeon immediately to explore it. Test runs give no loot, XP or gold. Leave with the exit as usual.
+- **Create Seal** - makes a *Dungeon Seal* item holding the blueprint. Use it from your bag on open ground outside town and the dungeon rises in front of you as a permanent entrance (custom dungeons have no collapse timer; they disappear once the boss is beaten). Each seal keeps its own settings, so you can carry several different dungeons.
+- **Reset** - back to defaults. **Back** - return to the pause menu.
+
+### Dungeon Designer - Drag & Drop layout mode
+
+In the Designer, set **Customize by -> Drag & Drop layout**, then press **Open Layout Editor**. (Option selection mode is unchanged.)
+
+**Room map**
+- Click an empty slot (or drag the *Room* chip onto it) to add a room; right-click a room or drag it to the *Trash* box to remove it; drag a room to an empty slot to move it.
+- Click the bar between two neighbouring rooms to connect / disconnect them, or select a room and use the Up / Down / Left / Right buttons (these also create the neighbour room).
+- Drag the *Start* and *Boss* chips onto rooms to choose the start room and the boss room. The grid can be 2x2 up to 6x6.
+- The editor warns if a room cannot be reached from the start; Test Run / Create Seal are blocked until it is fixed.
+
+**Room editor** (double-click a room, or *Edit Room*)
+- Room width / height can be changed (limited by the Room size setting).
+- **Monsters**: drag any monster into the room to pin it to a spot, or drop it on the *RANDOM spot* box to let it appear anywhere in the room. *Mini: ON* makes placed monsters mini bosses. *Spawner* adds a monster spawning device.
+- **Traps** (Boulder, Gas, Teleport, Pitfall, Falling Boom, Spikes, Arrow, Mimic chest) and **Treasure** chests work the same way: pinned or random.
+- **Terrain**: paint Wall, Cliff, Water or Lava (lava burns you) with click / drag, 3 colour styles each, Eraser or right-click to erase. Corridor lanes to linked rooms are always kept clear.
+- Pinned items can be dragged to a new spot; the list at the bottom shows every entry in the room and lets you delete it.
+- You can also click a chip to arm it and then click the room instead of dragging.
+
+### Randomized rooms, random monsters / traps, lava
+
+- **Room editor -> Random tab**: tick *Terrain / Monsters / Traps*, pick an *Amount* (Few / Some / Many) and press **Randomize now** to fill the room with random terrain patches, monsters and traps (it replaces the ticked parts; you can still edit the result). Turn on **Re-roll each run** to have the room add fresh random terrain / monsters / traps every time that dungeon is built, on top of what you placed by hand. The map screen has **Randomize all** for every room.
+- Randomization never blocks the way: door lanes, the room centre, the exit / start area and the boss area stay clear, and no walkable pocket is ever sealed off.
+- **Random monster** and **Random trap** chips (Monster / Trap tabs): the type is rolled every run; drag them to a specific tile to pin the location, or drop them on the RANDOM box to roll the location too.
+- **Lava** can be walked on but burns: periodic damage plus a *Burning* damage-over-time that keeps ticking for a few seconds after you leave.
+
+### Random terrain for generated dungeons
+
+Generated dungeons now get random cliffs, water, lava and walls inside their rooms (a few patches normally, more on higher-difficulty dungeons). In the Dungeon Designer (option-selection mode) the new **Random terrain** setting (Off / Few / Some / Many) controls it for your own dungeons. Doors, the exit, the boss area and every walkable tile stay reachable, and monsters / chests / traps are moved onto floor tiles.
+
+### Adventurer NPCs and the Dungeon Board
+
+**Adventurers (NPC players)**
+- Every game starts with **2-5 adventurers**. The roster grows with your level (about one new adventurer per two levels, one recruit every ~15 s) up to a hard limit of **50**.
+- Each adventurer has a class (Warrior / Ranger / Assassin / Mage / Priest), a level, gear, up to 4 equipped class skills, an inventory, potions and gold - just like you. Open the **Adventurers** tab in the guild, or stand next to one in the world and press **T**, to inspect them.
+- **AI**: they hunt monsters near their level (they fight for real when you are close, and are simulated when far away), earn gold / XP / loot, drink potions, recall to town when hurt or full, sell loot, restock potions and buy better gear, so they steadily get stronger. They also take **guild quests** and **play dungeons from the Dungeon Board**.
+- Adventurers that you see in town wander around; ones that finished resting walk out the south gate to hunt.
+
+**Dungeon Board (Adventurer Guild -> Dungeon Board)**
+- Every listed dungeon (yours or an adventurer's) shows its biome, boss, rooms, owner, **reward cut** and play count. Press **Enter** to play it. Board runs give **half gold / XP**, and the owner receives their cut of the gold you earn, and a share of the item drops (unique boss items always stay with you). Leaving early is fine (Recall / portal); the play count rises when the boss is defeated.
+- The board always keeps a few adventurer dungeons, ranked around your level.
+
+**Placing your own dungeons (Guild -> My Dungeons)**
+- Craft a Dungeon Seal in the **Dungeon Designer**, then press **List (x% cut)** next to it in the My Dungeons tab. Adventurers (and you, via the board) will play it according to their rank.
+- You start with **3 listing slots** and can buy more up to **10** (cost 400 x (slots - 2) gold per slot). Each listing has its own **cut of 0-30%** (default 10%), adjustable with the +/- buttons at any time. Higher cuts make adventurers less likely to run your dungeon.
+- Gold and items adventurers earn from your dungeons are held in a **stash**; press **Collect** to take them. **Withdraw** removes a listing and returns the seal.
+- Your listings and every adventurer are stored in your save file (old saves simply get a fresh roster).

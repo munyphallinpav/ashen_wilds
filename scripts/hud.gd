@@ -126,6 +126,16 @@ func _ready():
 	_build_select()
 	_build_title()
 	_build_controls()
+	var dz = preload("res://scripts/designer.gd").new()
+	dz.visible = false
+	add_child(dz)
+	panels["designer"] = dz
+	dz.setup(self)
+	var le = preload("res://scripts/layout_editor.gd").new()
+	le.visible = false
+	add_child(le)
+	panels["layout"] = le
+	le.setup(self)
 	_build_tip()
 	Game.binds_changed.connect(refresh_keys)
 	refresh_keys()
@@ -342,6 +352,11 @@ func open_npc(npc_id):
 		wins["smith"].refresh()
 	else:
 		open_shop(npc_id)
+
+
+func open_hero(id):
+	set_panel("guild")
+	wins["guild"].open_hero(id)
 
 
 func open_shop(npc_id):
@@ -729,10 +744,10 @@ func _input(event):
 func _build_pause():
 	var p = _full_overlay("pause", Color(0, 0, 0, 0.65))
 	var t = UI.lbl("PAUSED", 18, Color(1, 0.9, 0.4))
-	t.position = Vector2(200, 50)
+	t.position = Vector2(200, 28)
 	p.add_child(t)
-	_menu_column(p, ["Resume", "Save Game", "Load Game", "Controls", "Quit to Title"],
-		[func(): set_panel(""), func(): open_slots("save", "pause"), func(): open_slots("load", "pause"), func(): open_controls("pause"), _quit_to_title], 80)
+	_menu_column(p, ["Resume", "Save Game", "Load Game", "Controls", "Dungeon Designer", "Quit to Title"],
+		[func(): set_panel(""), func(): open_slots("save", "pause"), func(): open_slots("load", "pause"), func(): open_controls("pause"), func(): set_panel("designer"), _quit_to_title], 58)
 	var vy = 90.0
 	for row in [["Music", "music_vol"], ["Sound", "sfx_vol"]]:
 		var l = UI.lbl(row[0], 9, Color(1, 0.9, 0.5))
@@ -901,6 +916,11 @@ func _unhandled_input(event):
 			_slots_back()
 		elif open_panel == "controls":
 			set_panel(controls_from)
+		elif open_panel == "layout":
+			panels["layout"].back()
+		elif open_panel == "designer":
+			Game.save_bp()
+			set_panel("pause")
 		elif open_panel != "":
 			set_panel("")
 		elif player != null and not player.dead:
@@ -1055,7 +1075,7 @@ func _update_map_info():
 	for rec in Game.dungeons:
 		var secs = int(rec["time_left"])
 		var dist = int(player.global_position.distance_to(Vector2(rec["pos"][0], rec["pos"][1])) / 16.0)
-		rows.append([dist, "%s  Rank %d  %d:%02d  (%d tiles)" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"], secs / 60, secs % 60, dist]])
+		rows.append([dist, ("%s  Rank %d  %d:%02d  (%d tiles)" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"], secs / 60, secs % 60, dist]) if not rec.has("bp") else ("%s  Rank %d  Custom  (%d tiles)" % [rec["bp"]["name"], rec["level"], dist])])
 	rows.sort_custom(func(a, b): return a[0] < b[0])
 	for i in range(mini(rows.size(), 7)):
 		lines.append(rows[i][1])

@@ -7,6 +7,7 @@ var unique_id = ""
 var level = 1
 var diff = 0
 var opened = false
+var mimic = false        # looks like a chest, bites when opened
 var spr
 var prompt
 
@@ -45,6 +46,16 @@ func _process(_d):
 
 func interact():
 	if opened:
+		return
+	if mimic:
+		opened = true
+		Game.notify("It's a MIMIC!")
+		Audio.sfx("boss_roar", 0.7, 1.4)
+		Game.main.shake(3.0)
+		var e = Game.world.spawn_mob("mimic", global_position, level + 1)
+		e.diff = diff * 0.5
+		e.angry = true
+		queue_free()
 		return
 	opened = true
 	Audio.sfx("chest", 1.0)

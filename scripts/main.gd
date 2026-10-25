@@ -2,6 +2,8 @@ extends Node2D
 ## Entry point: title menu -> world + player (new game or loaded save), day/night, dungeon spawning / entering / leaving, saving.
 
 const WorldScript = preload("res://scripts/world.gd")
+const HeroesScript = preload("res://scripts/heroes.gd")
+var heroes_mgr = null
 const HudScript = preload("res://scripts/hud.gd")
 const PlayerScript = preload("res://scripts/player.gd")
 const MapScript = preload("res://scripts/map_data.gd")
@@ -9,6 +11,8 @@ const BossScript = preload("res://scripts/boss.gd")
 const DungeonScript = preload("res://scripts/dungeon.gd")
 const EntranceScript = preload("res://scripts/dungeon_entrance.gd")
 const ChestScript = preload("res://scripts/chest.gd")
+const DTrapScript = preload("res://scripts/dtrap.gd")
+const SpawnerScript = preload("res://scripts/spawner.gd")
 const TrapScript = preload("res://scripts/trap.gd")
 const ExitScript = preload("res://scripts/exit_portal.gd")
 const DAY_LEN = 360.0
@@ -42,6 +46,11 @@ func _ready():
 	Game.dungeons = []
 	Game.cur_dungeon = null
 	Game.dlayout = null
+	Game.heroes = []
+	Game.listings = []
+	Game.stash = {"gold": 0, "items": []}
+	Game.listing_slots = 3
+	Game.heroes_mgr = null
 	Game.play_time = 0.0
 	get_tree().paused = false
 	RenderingServer.set_default_clear_color(Color("2f6fa8"))
@@ -91,10 +100,14 @@ func _begin(seed_val, char_id, data):
 	_build_ambient()
 	hud.bind_player(p)
 
+	heroes_mgr = HeroesScript.new()
+	add_child(heroes_mgr)
 	if data != null:
 		_restore(data, p)
+		heroes_mgr.from_save(data.get("hd", {}))
 	else:
 		p.new_game_kit()
+		heroes_mgr.start_new()
 		world.populate()
 		for i in range(5):
 			_spawn_dungeon(true)
@@ -160,7 +173,7 @@ func make_save():
 	var d = {"version": 3, "time": Time.get_datetime_string_from_system(false, true), "play_time": Game.play_time,
 		"seed": world.seed_val, "tod": tod, "char": Game.player.char_id, "player": pdata,
 		"mobs": [], "campfires": [], "depleted": [], "next_id": next_id, "dungeons": Game.dungeons,
-		"explored": Game.map.to_base64(),
+		"explored": Game.map.to_base64(), "hd": heroes_mgr.to_save() if heroes_mgr != null else {},
 		"waypoint": [Game.waypoint.x, Game.waypoint.y] if Game.waypoint != null else null}
 	if Game.cur_dungeon == null:
 		for e in get_tree().get_nodes_in_group("hurtable"):
@@ -419,6 +432,38 @@ func _roll_rank(plv):
 	return clampi(rank, 1, Game.MAX_LEVEL)
 
 
+func test_dungeon(bp):
+	if Game.cur_dungeon != null:
+		return false
+	var p = Game.player
+	var rec = {"id": -1, "biome": bp["biome"], "pos": [p.global_position.x, p.global_position.y], "level": bp["rank"],
+		"diff": mini(int(bp["rank"]) / 21, 4), "seed": randi(), "time_left": 1.0e9, "found": true, "rank": bp["rank"],
+		"bp": bp.duplicate(true), "test": true, "state": {"killed": [], "opened": [], "boss": false, "treasure": false}, "cleared": false}
+	enter_dungeon(rec)
+	return true
+
+
+func enter_listing(l):
+	if Game.cur_dungeon != null:
+		return
+	var bp = l["bp"].duplicate(true)
+	var p = Game.player.global_position
+	var rec = {"id": -2, "biome": bp["biome"], "pos": [p.x, p.y], "level": bp["rank"], "diff": mini(int(bp["rank"]) / 21, 4),
+		"seed": randi(), "time_left": 1.0e9, "found": true, "rank": bp["rank"], "bp": bp, "listing": {"id": l["id"], "cut": l["cut"]},
+		"state": {"killed": [], "opened": [], "boss": false, "treasure": false}, "cleared": false}
+	hud.set_panel("")
+	enter_dungeon(rec)
+
+
+func place_custom_dungeon(bp, pos):
+	var rec = {"id": next_id, "biome": bp["biome"], "pos": [pos.x, pos.y], "level": bp["rank"],
+		"diff": mini(int(bp["rank"]) / 21, 4), "seed": randi(), "time_left": 1.0e9, "found": true, "rank": bp["rank"],
+		"bp": bp.duplicate(true), "state": {"killed": [], "opened": [], "boss": false, "treasure": false}, "cleared": false}
+	next_id += 1
+	Game.dungeons.append(rec)
+	_make_entrance(rec)
+
+
 func _make_entrance(rec):
 	var n = EntranceScript.new()
 	n.rec = rec
@@ -484,6 +529,33 @@ func enter_dungeon(rec):
 		tr.level = rec["level"]
 		tr.position = s["pos"]
 		entities.add_child(tr)
+	for tp in lay.traps:
+		var dtr = DTrapScript.new()
+		dtr.kind = tp["kind"]
+		dtr.level = rec["level"]
+		dtr.rect = tp["rect"]
+		dtr.rooms = lay.room_list
+		dtr.position = tp["pos"]
+		entities.add_child(dtr)
+	for mm in lay.mimics:
+		var mc = ChestScript.new()
+		mc.mimic = true
+		mc.idx = -1
+		mc.level = rec["level"]
+		mc.diff = rec["diff"]
+		mc.position = mm["pos"]
+		entities.add_child(mc)
+	for sp in lay.spawners:
+		if st["killed"].has(sp["uid"]):
+			continue
+		var spw = SpawnerScript.new()
+		spw.biome = rec["biome"]
+		spw.type = sp["type"]
+		spw.level = rec["level"]
+		spw.diff = rec["diff"] * 0.5
+		spw.uid = sp["uid"]
+		spw.position = sp["pos"]
+		entities.add_child(spw)
 	for dt in lay.darts:
 		var tr2 = TrapScript.new()
 		tr2.kind = "dart"
@@ -493,7 +565,7 @@ func enter_dungeon(rec):
 		entities.add_child(tr2)
 	if not st["boss"]:
 		var b = BossScript.new()
-		b.boss_id = Game.DUNGEONS[rec["biome"]]["boss"]
+		b.boss_id = Game.dungeon_boss(rec)
 		b.level = rec["level"] + 2 + rec["diff"]
 		b.diff = rec["diff"] * 0.5
 		b.position = lay.boss_pos
@@ -510,7 +582,7 @@ func _spawn_treasure(rec, pos):
 	var ch = ChestScript.new()
 	ch.idx = 999
 	ch.gold_chest = true
-	var uniques = Items.boss_unique_for(Game.DUNGEONS[rec["biome"]]["boss"])
+	var uniques = Items.boss_unique_for(Game.dungeon_boss(rec))
 	ch.unique_id = uniques[hash(rec["seed"]) % uniques.size()]
 	ch.level = rec["level"] + 2 + rec["diff"]
 	ch.diff = rec["diff"]
@@ -545,7 +617,13 @@ func leave_dungeon(_ok):
 	_overworld_limits()
 	Game.player.global_position = return_pos
 	cam.reset_smoothing()
-	if rec["state"]["boss"]:
+	if rec.has("listing"):
+		if rec["state"]["boss"]:
+			var l = heroes_mgr.get_listing(int(rec["listing"]["id"]))
+			if l != null:
+				l["runs"] += 1
+		Game.notify("You return to the guild.")
+	elif rec["state"]["boss"]:
 		_remove_dungeon(rec)
 		Game.notify("The dungeon crumbles behind you.")
 	hud.set_panel("")

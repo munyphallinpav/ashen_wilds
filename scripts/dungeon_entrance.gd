@@ -60,6 +60,8 @@ func _process(delta):
 	if near:
 		var secs = int(rec["time_left"])
 		prompt.text = "[T] Enter %s\nRank %d  (%d:%02d left)" % [Game.DUNGEONS[rec["biome"]]["name"], rec["level"], secs / 60, secs % 60]
+		if rec.has("bp"):
+			prompt.text = "[T] Enter %s\nCustom - Rank %d" % [rec["bp"]["name"], rec["level"]]
 
 
 func interact():

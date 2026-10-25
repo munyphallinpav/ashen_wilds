@@ -202,6 +202,7 @@ const ITEMS = {
 	"stew": {"name": "Hearty Stew", "cat": "food", "hunger": 50, "heal": 0.20, "buff": "well_fed", "value": 28},
 	"mushroom_soup": {"name": "Mushroom Soup", "cat": "food", "hunger": 35, "heal": 0.10, "buff": "focused", "value": 24},
 	"campfire": {"name": "Campfire Kit", "cat": "place", "value": 20},
+	"dungeon_seal": {"name": "Dungeon Seal", "cat": "seal", "value": 0},
 	"book_t_fire": {"name": "Spell Book: Ember Burst", "cat": "book", "skill": "t_fire", "value": 400},
 	"book_t_water": {"name": "Spell Book: Tidal Wave", "cat": "book", "skill": "t_water", "value": 400},
 	"book_t_earth": {"name": "Spell Book: Rock Fall", "cat": "book", "skill": "t_earth", "value": 450},
@@ -252,6 +253,9 @@ const RECIPES = [
 # hp/dmg are BASE values scaled by level (mob_hp_scale / mob_dmg_scale) and tier. def is a multiplier of mob_def(level).
 # abil: dash (pounce / swoop), slam (ground pound), ranged, breath (fire fan), poison (contact poison), drain (lifesteal)
 const MOBS = {
+	"mimic": {"name": "Mimic", "hp": 90, "dmg": 12, "def": 1.2, "speed": 52, "aggro": 220, "mode": "hostile", "xp": 3.0, "radius": 8, "sheet": "res://assets/mobs/mimic.png", "fw": 32, "fps": 8,
+		"hop": true, "elem": "", "res": {}, "abil": ["dash"], "magic": false, "tier": 2.5, "gold": 5.0,
+		"loot": [["potion_hp_2", 0.6]]},
 	"slime": {"name": "Slime", "hp": 30, "dmg": 8, "def": 0.5, "speed": 24, "aggro": 85, "mode": "hostile", "xp": 1.0, "radius": 7, "sheet": "res://assets/mobs/slime.png", "fw": 32, "fps": 6,
 		"hop": true, "elem": "water", "res": {"fire": -20}, "abil": [], "magic": false, "tier": 0.8, "gold": 0.8,
 		"loot": [["gel", 0.8]]},
@@ -445,6 +449,126 @@ var dungeons = []          # active dungeon records (see main.gd)
 var cur_dungeon = null     # record of the dungeon the player is inside (or null)
 var dlayout = null         # layout of the current dungeon
 
+# ---- adventurer NPCs and the guild dungeon board (saved with the game)
+var heroes = []            # adventurer records, see heroes.gd
+var hero_next = 1
+var hero_base = 3          # adventurers at the start of the game (2-5)
+var listings = []          # dungeons offered on the guild board {id, owner, name, bp, cut, runs, earned}
+var listing_next = 1
+var listing_slots = 3      # how many dungeons the player may list (3-10)
+var stash = {"gold": 0, "items": []}   # the player's share of earnings from listed dungeons
+var heroes_mgr = null
+const HERO_MAX = 50
+const SLOTS_MAX = 10
+const CUT_MAX = 0.30
+
+# ---- dungeon designer blueprint (persisted)
+const BpMap = preload("res://scripts/bpmap.gd")
+const BP_PATH = "user://dungeon_bp.json"
+const TRAP_KINDS = ["boulder", "gas", "teleport", "pit", "boom", "spikes", "dart", "mimic"]
+const TRAP_NAMES = {"boulder": "Bouncing Boulder", "gas": "Poison Gas", "teleport": "Teleport Rune", "pit": "Pitfall", "boom": "Falling Boom", "spikes": "Spikes", "dart": "Arrow Trap", "mimic": "Mimic Chest", "random": "Random trap"}
+const SIZE_NAMES = ["Small", "Medium", "Large"]
+var bp = null
+
+
+func default_bp():
+	var t = {}
+	for k in TRAP_KINDS:
+		t[k] = 1
+	return {"name": "My Dungeon", "biome": "forest", "grid": 3, "size": 1, "mobs": 5, "mob_types": [], "spawners": 3,
+		"traps": t, "boss": "treant", "minis": 2, "mini_type": "", "rank": 10, "terrain": 0,
+		"manual": false, "map": BpMap.default_map("forest", 3, 1)}
+
+
+func load_bp():
+	bp = default_bp()
+	if FileAccess.file_exists(BP_PATH):
+		var f = FileAccess.open(BP_PATH, FileAccess.READ)
+		var d = JSON.parse_string(f.get_as_text())
+		if d is Dictionary:
+			bp = fix_bp(d)
+
+
+func fix_bp(d):
+	var b = default_bp()
+	for k in b:
+		if not d.has(k):
+			continue
+		if typeof(b[k]) == TYPE_INT and (typeof(d[k]) == TYPE_FLOAT or typeof(d[k]) == TYPE_INT):
+			b[k] = int(d[k])
+		elif typeof(d[k]) == typeof(b[k]):
+			b[k] = d[k]
+	for k in TRAP_KINDS:
+		b["traps"][k] = clampi(int(b["traps"].get(k, 1)), 0, 3)
+	if not DUNGEONS.has(b["biome"]):
+		b["biome"] = "forest"
+	if not BOSSES.has(b["boss"]):
+		b["boss"] = DUNGEONS[b["biome"]]["boss"]
+	var ok = []
+	for m in b["mob_types"]:
+		if MOBS.has(m) and m != "mimic":
+			ok.append(m)
+	b["mob_types"] = ok
+	b["grid"] = clampi(int(b["grid"]), 2, 6)
+	b["size"] = clampi(int(b["size"]), 0, 2)
+	b["mobs"] = clampi(int(b["mobs"]), 0, 10)
+	b["spawners"] = clampi(int(b["spawners"]), 0, 12)
+	b["minis"] = clampi(int(b["minis"]), 0, 8)
+	b["rank"] = clampi(int(b["rank"]), 1, 100)
+	b["terrain"] = clampi(int(b["terrain"]), 0, 3)
+	b["map"] = BpMap.fix(b["map"], b["grid"], b["size"])
+	return b
+
+
+func validate_bp(b):
+	return BpMap.validate(b)
+
+
+func save_bp():
+	if bp == null:
+		return
+	var f = FileAccess.open(BP_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(bp))
+
+
+func dungeon_boss(rec):
+	if rec.has("bp"):
+		return rec["bp"]["boss"]
+	return DUNGEONS[rec["biome"]]["boss"]
+
+
+## reward multiplier for gold / xp: test runs 0, replayable guild-board dungeons 0.5
+func reward_mult():
+	if cur_dungeon == null:
+		return 1.0
+	if cur_dungeon.get("test", false):
+		return 0.0
+	if cur_dungeon.has("listing"):
+		return 0.5
+	return 1.0
+
+
+func random_bp(rank, nm, biome = ""):
+	var b = default_bp()
+	var keys = DUNGEONS.keys()
+	b["biome"] = biome if biome != "" else keys[randi() % keys.size()]
+	b["boss"] = DUNGEONS[b["biome"]]["boss"]
+	b["name"] = nm
+	b["rank"] = clampi(rank, 1, 100)
+	b["grid"] = randi_range(2, 4)
+	b["size"] = randi_range(0, 1)
+	b["mobs"] = randi_range(3, 7)
+	b["spawners"] = randi_range(1, 4)
+	b["minis"] = randi_range(1, 3)
+	b["terrain"] = randi_range(0, 2)
+	for k in TRAP_KINDS:
+		b["traps"][k] = randi_range(0, 2)
+	return b
+
+
+func is_test():	return cur_dungeon != null and cur_dungeon.get("test", false)
+
 var _cache = {}
 var _last_text = ""
 var _last_ms = 0
@@ -452,6 +576,7 @@ var _last_ms = 0
 
 func _ready():
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	load_bp()
 	SKILLS.merge(preload("res://scripts/skill_data.gd").DATA.duplicate(true))
 	_layout_skills()
 	_key("move_up", KEY_W)

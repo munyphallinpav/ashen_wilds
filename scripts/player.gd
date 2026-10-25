@@ -16,6 +16,7 @@ var ranks = {}
 var cd = {}
 var cd_max = {}
 var inv = []
+var lava_t = 0.0
 var bag_size = Game.BAG_CAP
 var equip = {"weapon": null, "armor": null, "necklace": null, "ring1": null, "ring2": null, "bracelet1": null, "bracelet2": null}
 var loadout = ["", "", "", ""]
@@ -218,6 +219,10 @@ func xp_to_next():
 
 
 func add_xp(n):
+	var rm = Game.reward_mult()
+	if rm <= 0.0:
+		return
+	n = n * rm
 	if level >= Game.MAX_LEVEL:
 		return
 	xp += int(n)
@@ -270,6 +275,16 @@ func respec():
 
 
 func add_gold(n):
+	var rm = Game.reward_mult()
+	if rm <= 0.0:
+		return
+	if n > 0 and Game.cur_dungeon != null and Game.cur_dungeon.has("listing") and Game.heroes_mgr != null:
+		n = int(n * rm)
+		var l = Game.heroes_mgr.get_listing(int(Game.cur_dungeon["listing"]["id"]))
+		if l != null and l["owner"] != "player":
+			var cut = int(n * l["cut"])
+			n -= cut
+			Game.heroes_mgr.player_paid_owner(l, cut)
 	gold += int(n)
 	if n > 0:
 		Audio.sfx("coin", 0.7)
@@ -469,6 +484,17 @@ func _physics_process(delta):
 	for k in cd.keys():
 		cd[k] = maxf(0.0, cd[k] - delta)
 	_tick_effects(delta)
+	if Game.dlayout != null and Game.dlayout.tile_code(global_position) == 4:
+		lava_t -= delta
+		if lava_t <= 0.0:
+			lava_t = 0.5
+			take_damage(max_hp * 0.03 + 3.0, global_position, 0.0, "fire", {"lvl": 1, "magic": true})
+			statuses = statuses.filter(func(s): return s[0] != "burn")
+			add_status("burn", 3.5, 1.0, max_hp * 0.08)
+			Game.spawn_fx("fire", global_position + Vector2(0, -6), {"scl": 0.6})
+			Game.float_text("Burning!", global_position + Vector2(0, -14), Color(1, 0.6, 0.2), 7)
+	else:
+		lava_t = 0.0
 	_recall_tick(delta, recall_t > 0.0 and (Input.get_vector("move_left", "move_right", "move_up", "move_down").length() > 0.1 or atk_cd > 0.0))
 
 	var stunned = _is_stunned()
@@ -688,7 +714,7 @@ func can_hold(it):
 
 func add_item(it, silent = false):
 	var left = it["n"]
-	if not it.has("sub"):
+	if not it.has("sub") and not it.has("bp"):
 		for s in inv:
 			if left <= 0:
 				break
@@ -910,6 +936,21 @@ func _use_item(it):
 			Game.notify("Can't place that there")
 			return false
 		Game.world.add_campfire(pos)
+		return true
+	if cat == "seal":
+		if not it.has("bp"):
+			Game.notify("This seal is blank")
+			return false
+		if Game.cur_dungeon != null or (absf(global_position.x - Game.W * 8.0) < preload("res://scripts/world.gd").TOWN_HX + 60.0 and absf(global_position.y - Game.H * 8.0) < preload("res://scripts/world.gd").TOWN_HY + 60.0):
+			Game.notify("Can't place a dungeon here")
+			return false
+		var sp = global_position + Vector2(0, 40)
+		if not Game.world.is_walkable(sp):
+			Game.notify("Need open ground in front of you")
+			return false
+		Game.main.place_custom_dungeon(it["bp"], sp)
+		Game.notify("The dungeon \"%s\" rises from the ground!" % it["bp"]["name"])
+		Game.spawn_fx("light", sp)
 		return true
 	Game.notify("Can't use that")
 	return false
@@ -1335,6 +1376,8 @@ func _fix_item(it):
 	if it == null:
 		return null
 	it["n"] = int(it.get("n", 1))
+	if it.has("bp"):
+		it["bp"] = Game.fix_bp(it["bp"])
 	if it.has("sub"):
 		it["rar"] = int(it["rar"])
 		it["ilvl"] = int(it["ilvl"])

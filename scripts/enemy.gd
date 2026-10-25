@@ -299,10 +299,14 @@ func _dot(amount, kind):
 		_die()
 
 
+var last_npc = ""
+
+
 func take_damage(amount, from_pos, kb = 80.0, element = "", opts = {}):
 	if hp <= 0.0:
 		return
 	var lvl = opts.get("lvl", 1)
+	last_npc = str(opts.get("npc", ""))
 	var dm = amount * Game.def_factor(defense, lvl)
 	if element != "":
 		dm *= 1.0 - float(d["res"].get(element, 0)) / 100.0
@@ -336,6 +340,12 @@ func _die():
 		return
 	add_to_group("dead")
 	Audio.sfx("enemy_die", 0.8)
+	if last_npc != "" and Game.heroes_mgr != null:
+		Game.heroes_mgr.credit_kill(last_npc, type, level, mini, global_position)
+		Game.chips(global_position + Vector2(0, -8), Color(0.8, 0.2, 0.2), 8)
+		remove_from_group("hurtable")
+		queue_free()
+		return
 	var p = Game.player
 	var luck = 0.0
 	var pl_level = 1
